@@ -68,12 +68,10 @@ docs/                Schéma JSON des sources
 
 ## Publier une nouvelle version
 
-1. Mettre à jour `version` dans `package.json` (ex. `0.2.0`).
-2. Commit, puis tag et push :
-   ```bash
-   git tag v0.2.0
-   git push origin main --tags
-   ```
+1. Mettre à jour `version` dans `package.json` (ex. `0.2.0`) et pousser sur `main`.
+2. Au choix :
+   - GitHub → **Actions → Release Windows → Run workflow** (le tag `v0.2.0` est créé automatiquement) ;
+   - ou `git tag v0.2.0 && git push origin v0.2.0`.
 3. Le workflow **Release Windows** construit l'installateur sur `windows-latest` et le publie dans une Release GitHub avec `latest.yml`. Les installations existantes se mettent à jour automatiquement.
 
 ---
