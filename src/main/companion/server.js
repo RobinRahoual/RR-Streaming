@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { SourceValidationError } = require('../sources/validator');
+const builder = require('../sources/builder');
 
 const MAX_BODY = 1024 * 1024;
 const MAX_FAILURES = 10;
@@ -82,6 +83,17 @@ class CompanionServer {
       if (is('POST', 'providers', '*', 'toggle')) { await r.setProviderEnabled(seg[1], (await body(req)).enabled); return this.#state(res); }
       if (is('DELETE', 'providers', '*')) { await r.removeLocalProvider(seg[1]); return this.#state(res); }
       if (is('POST', 'import')) { await r.importDocument(await rawBody(req)); return this.#state(res); }
+
+      // Assistant de création de source
+      if (is('GET', 'builder')) return sendJson(res, 200, { version: 1 });
+      if (is('POST', 'builder', 'analyze')) {
+        const b = await body(req);
+        return sendJson(res, 200, await builder.analyzeUrl(b.url, b.headers || {}));
+      }
+      if (is('POST', 'builder', 'test')) {
+        const b = await body(req);
+        return sendJson(res, 200, await builder.testProvider(b.provider, b));
+      }
 
       throw httpError(404, `Route inconnue : ${m} ${p}`);
     } catch (err) {

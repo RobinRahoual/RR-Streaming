@@ -8,30 +8,30 @@
 <title>RR Streaming · Sources</title>
 <style>
   :root {
-    --bg: #000; --group: rgba(28,28,30,.78); --elev: #2c2c2e; --sep: rgba(84,84,88,.55);
-    --label: #fff; --label2: rgba(235,235,245,.6); --label3: rgba(235,235,245,.3);
-    --blue: #0a84ff; --green: #30d158; --red: #ff453a; --fill: rgba(118,118,128,.24);
-    --r: 14px;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    --bg: #000; --group: rgba(28,28,30,.82); --elev: #2c2c2e; --sep: rgba(84,84,88,.5);
+    --label: #fff; --label2: rgba(235,235,245,.62); --label3: rgba(235,235,245,.3);
+    --blue: #0a84ff; --green: #30d158; --red: #ff453a; --orange: #ff9f0a; --fill: rgba(118,118,128,.24);
+    --r: 14px; --ease: cubic-bezier(.2,.8,.2,1);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    margin: 0; min-height: 100vh; color: var(--label); background: var(--bg);
+    color: var(--label); background: var(--bg); -webkit-font-smoothing: antialiased;
     background-image: radial-gradient(1200px 600px at 20% -10%, #1d2a44 0%, transparent 60%),
                       radial-gradient(900px 500px at 110% 10%, #2a1d3a 0%, transparent 55%);
-    background-attachment: fixed; -webkit-font-smoothing: antialiased;
+    background-attachment: fixed;
   }
-  main { max-width: 720px; margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 16px 80px; }
-  header { padding: 28px 4px 18px; display: flex; align-items: end; justify-content: space-between; gap: 12px; }
-  h1 { font: 700 34px/1.1 -apple-system, "SF Pro Display", system-ui; letter-spacing: .3px; margin: 0; }
+  body.locked { overflow: hidden; }
+  main { max-width: 720px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px 80px; }
+  header.top { padding: 24px 4px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font: 800 34px/1.1 -apple-system, "SF Pro Display", system-ui; letter-spacing: .2px; margin: 0; }
   .pill { font-size: 13px; padding: 6px 12px; border-radius: 99px; background: var(--fill); color: var(--label2); white-space: nowrap; }
   .pill.on::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 7px; vertical-align: 1px; }
-  h2 { font-size: 13px; font-weight: 400; text-transform: uppercase; letter-spacing: .4px; color: var(--label2); margin: 30px 16px 8px; }
-  .foot { font-size: 13px; color: var(--label2); margin: 8px 16px 0; line-height: 1.4; }
-  .group {
-    background: var(--group); border-radius: var(--r); overflow: hidden;
-    -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-  }
+  h2 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: .4px; color: var(--label2); margin: 30px 16px 8px; display: flex; justify-content: space-between; align-items: center; }
+  h2 button { font-size: 15px; text-transform: none; letter-spacing: 0; }
+  .foot { font-size: 13px; color: var(--label2); margin: 8px 16px 0; line-height: 1.45; }
+  .group { background: var(--group); border-radius: var(--r); overflow: hidden; -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); }
   .row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; position: relative; }
   .row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--sep); }
   .row .main { flex: 1; min-width: 0; }
@@ -40,21 +40,21 @@
   .sub.err { color: var(--red); white-space: normal; }
   .dim .title, .dim .sub { opacity: .45; }
   .empty { padding: 18px 16px; color: var(--label2); font-size: 15px; }
-  input[type=url], input[type=text], textarea {
-    width: 100%; background: transparent; border: 0; outline: 0; color: var(--label);
-    font: 17px/1.35 inherit; font-family: inherit; padding: 0;
+  input[type=url], input[type=text], input[type=number], input[type=search], textarea {
+    width: 100%; background: transparent; border: 0; outline: 0; color: var(--label); font: 17px/1.35 inherit; font-family: inherit; padding: 0; min-width: 0;
   }
-  textarea { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; min-height: 220px; resize: vertical; padding: 14px 16px; }
+  textarea { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; min-height: 240px; resize: vertical; padding: 14px 16px; }
   ::placeholder { color: var(--label3); }
-  button {
-    font: inherit; font-size: 17px; border: 0; background: none; color: var(--blue); padding: 6px 4px; cursor: pointer;
-  }
-  button:disabled { opacity: .4; }
+  button { font: inherit; font-size: 17px; border: 0; background: none; color: var(--blue); padding: 6px 4px; cursor: pointer; }
+  button:disabled { opacity: .35; cursor: default; }
   button.danger { color: var(--red); }
-  button.primary {
-    width: 100%; background: var(--blue); color: #fff; border-radius: 12px; padding: 14px; font-weight: 600; margin-top: 12px;
-  }
-  button.secondary { width: 100%; background: var(--fill); color: var(--label); border-radius: 12px; padding: 14px; font-weight: 600; margin-top: 10px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border-radius: 14px; padding: 15px; font-weight: 600; transition: transform .15s var(--ease), opacity .2s; }
+  .btn:active:not(:disabled) { transform: scale(.98); }
+  .btn.primary { background: var(--blue); color: #fff; }
+  .btn.white { background: #fff; color: #000; }
+  .btn.secondary { background: var(--fill); color: var(--label); }
+  .btn.ghost { color: var(--blue); padding: 12px; font-weight: 500; }
+  .btn + .btn { margin-top: 10px; }
   .actions { display: flex; gap: 14px; flex-shrink: 0; }
   .switch { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
@@ -65,68 +65,163 @@
   .seg { display: flex; background: var(--fill); border-radius: 9px; padding: 2px; margin: 0 0 12px; }
   .seg button { flex: 1; color: var(--label); font-size: 13px; font-weight: 500; padding: 7px; border-radius: 7px; }
   .seg button.active { background: #636366; box-shadow: 0 3px 8px rgba(0,0,0,.12); }
-  .toast {
-    position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%);
-    background: rgba(44,44,46,.92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-    padding: 12px 20px; border-radius: 99px; font-size: 15px; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
-    max-width: calc(100vw - 32px); white-space: pre-line; text-align: center; z-index: 10;
+  .hidden { display: none !important; }
+
+  /* Carte « Ajouter une source » */
+  .hero-add {
+    display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; padding: 18px; border-radius: 20px;
+    background: linear-gradient(135deg, rgba(10,132,255,.32), rgba(94,92,230,.28)); border: 1px solid rgba(255,255,255,.12); color: var(--label);
   }
-  .toast.show { transform: translate(-50%, 0); }
-  .toast.err { background: rgba(120,20,20,.92); }
-  /* Écran d'appairage */
-  #gate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); z-index: 5; }
+  .hero-add .plus { width: 48px; height: 48px; border-radius: 14px; background: #fff; color: #000; display: grid; place-items: center; font-size: 30px; font-weight: 300; flex: none; }
+  .hero-add strong { display: block; font-size: 18px; }
+  .hero-add span { font-size: 14px; color: var(--label2); }
+  .hero-add .chev { margin-left: auto; color: var(--label3); font-size: 22px; }
+  details.adv { margin-top: 22px; }
+  details.adv summary { list-style: none; cursor: pointer; color: var(--label2); font-size: 15px; padding: 10px 16px; }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary::before { content: "›"; display: inline-block; margin-right: 8px; transition: transform .2s; }
+  details.adv[open] summary::before { transform: rotate(90deg); }
+
+  /* ---------------- Assistant ---------------- */
+  #wizard { position: fixed; inset: 0; z-index: 20; background: #000; display: flex; flex-direction: column; transform: translateY(100%); transition: transform .45s var(--ease); }
+  #wizard.open { transform: none; }
+  #wizard::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(900px 500px at 10% -10%, rgba(10,132,255,.28), transparent 60%), radial-gradient(700px 400px at 110% 0%, rgba(94,92,230,.22), transparent 60%); }
+  .wz-head { position: relative; display: flex; align-items: center; gap: 8px; padding: max(14px, env(safe-area-inset-top)) 12px 10px; max-width: 720px; width: 100%; margin: 0 auto; }
+  .wz-head .icon { width: 38px; height: 38px; border-radius: 50%; background: var(--fill); color: var(--label); display: grid; place-items: center; font-size: 20px; padding: 0; }
+  .wz-progress { flex: 1; display: flex; gap: 6px; padding: 0 8px; }
+  .wz-progress span { flex: 1; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; position: relative; }
+  .wz-progress span::after { content: ""; position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left; transition: transform .4s var(--ease); }
+  .wz-progress span.done::after { transform: scaleX(1); }
+  .wz-body { position: relative; flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+  .wz-step { max-width: 720px; margin: 0 auto; padding: 18px 16px 30px; animation: stepIn .4s var(--ease); }
+  .wz-step.back { animation-name: stepBack; }
+  @keyframes stepIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+  @keyframes stepBack { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+  .wz-kicker { font-size: 13px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; color: var(--blue); margin-bottom: 8px; }
+  .wz-title { font: 800 30px/1.12 -apple-system, "SF Pro Display", system-ui; margin: 0 0 10px; letter-spacing: -.2px; }
+  .wz-lead { color: var(--label2); font-size: 16px; line-height: 1.5; margin: 0 0 24px; }
+  .wz-foot { position: relative; max-width: 720px; width: 100%; margin: 0 auto; padding: 12px 16px max(16px, env(safe-area-inset-bottom)); background: linear-gradient(to top, #000 70%, transparent); }
+  .field { padding: 12px 16px; }
+  .field label { display: block; font-size: 13px; color: var(--label2); margin-bottom: 4px; }
+  .field + .field { border-top: .5px solid var(--sep); }
+  .chips { display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 99px; background: var(--group); color: var(--label); font-size: 16px; font-weight: 500; border: 1.5px solid transparent; transition: all .2s; }
+  .chip.on { background: rgba(10,132,255,.18); border-color: var(--blue); }
+  .chip .ck { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--label3); display: grid; place-items: center; font-size: 12px; }
+  .chip.on .ck { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .label-sm { font-size: 13px; color: var(--label2); margin: 22px 4px 10px; text-transform: uppercase; letter-spacing: .4px; }
+  .steps-list { counter-reset: s; margin: 0 0 18px; padding: 0; list-style: none; }
+  .steps-list li { counter-increment: s; display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 16px; line-height: 1.45; }
+  .steps-list li::before { content: counter(s); flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--fill); display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+  input.inline-input { display: inline-block; width: 110px; font-size: 16px; padding: 2px 10px; border-radius: 8px; background: var(--fill); font-weight: 600; }
+  .link-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 99px; background: var(--fill); color: var(--label); font-size: 15px; font-weight: 600; text-decoration: none; margin-top: 6px; }
+  .detect { margin-top: 14px; padding: 14px 16px; border-radius: var(--r); font-size: 14px; line-height: 1.5; word-break: break-all; }
+  .detect.ok { background: rgba(48,209,88,.12); border: 1px solid rgba(48,209,88,.35); }
+  .detect.warn { background: rgba(255,159,10,.12); border: 1px solid rgba(255,159,10,.35); word-break: normal; }
+  .detect b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; color: var(--label2); }
+  .tok { display: inline-block; padding: 0 7px; border-radius: 6px; background: var(--blue); color: #fff; font-weight: 600; word-break: normal; }
+  .loading { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 60px 0; color: var(--label2); }
+  .spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: #fff; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .cand { display: block; width: 100%; text-align: left; padding: 0; margin-bottom: 14px; border-radius: 18px; background: var(--group); border: 2px solid transparent; color: var(--label); overflow: hidden; transition: border-color .2s, transform .15s; }
+  .cand.on { border-color: var(--blue); }
+  .cand:active { transform: scale(.99); }
+  .cand-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; font-size: 14px; color: var(--label2); }
+  .cand-head .radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--label3); display: grid; place-items: center; }
+  .cand.on .radio { border-color: var(--blue); background: var(--blue); }
+  .cand.on .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  .sample { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-top: .5px solid var(--sep); }
+  .sample .thumb { width: 38px; height: 56px; border-radius: 6px; background: var(--elev) center/cover; flex: none; }
+  .sample .t { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sample .y { font-size: 13px; color: var(--label2); }
+  .sample .main { min-width: 0; flex: 1; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--fill); color: var(--label2); text-transform: uppercase; letter-spacing: .3px; }
+  .badge.good { background: rgba(48,209,88,.18); color: var(--green); }
+  .stepper { display: flex; align-items: center; gap: 0; background: var(--fill); border-radius: 10px; overflow: hidden; }
+  .stepper button { width: 36px; height: 38px; color: var(--label); font-size: 22px; padding: 0; }
+  .stepper output { min-width: 34px; text-align: center; font-weight: 700; font-size: 17px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .two .group { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
+  .two .stepper { align-self: stretch; justify-content: space-between; }
+  .summary .row .k { color: var(--label2); font-size: 15px; width: 110px; flex: none; }
+  .summary .row .v { flex: 1; min-width: 0; font-size: 15px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .done-screen { text-align: center; padding: 60px 10px 20px; }
+  .done-screen .check { width: 92px; height: 92px; margin: 0 auto 26px; border-radius: 50%; background: var(--green); display: grid; place-items: center; animation: pop .5s var(--ease); }
+  .done-screen .check svg { width: 48px; height: 48px; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+  .test-result { margin-top: 12px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 24px); opacity: 0; visibility: hidden;
+    background: rgba(44,44,46,.94); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    padding: 12px 20px; border-radius: 22px; font-size: 15px; transition: all .35s var(--ease);
+    max-width: calc(100vw - 32px); white-space: pre-line; text-align: center; z-index: 40;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
+  .toast.err { background: rgba(120,20,20,.94); }
+  #gate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); z-index: 30; }
   #gate.show { display: flex; }
   #gate .card { width: min(360px, 90vw); text-align: center; }
   #gate h3 { font-size: 22px; margin: 0 0 6px; }
   #gate p { color: var(--label2); font-size: 15px; margin: 0 0 22px; }
   #codeInput { text-align: center; font: 600 34px ui-monospace, "SF Mono", monospace; letter-spacing: 10px; background: var(--group); border-radius: var(--r); padding: 16px; }
-  .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <div id="gate">
   <div class="card">
     <h3>Code d'appairage</h3>
-    <p>Saisissez le code à 6 chiffres affiché dans l&apos;onglet Sources de RR Streaming.</p>
+    <p>Saisissez le code à 6 chiffres affiché dans l'onglet Sources de RR Streaming.</p>
     <input id="codeInput" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
-    <button class="primary" id="codeBtn">Se connecter</button>
+    <button class="btn primary" id="codeBtn" style="margin-top:14px">Se connecter</button>
   </div>
 </div>
 
 <main>
-  <header>
+  <header class="top">
     <h1>Sources</h1>
     <span class="pill" id="status">Connexion…</span>
   </header>
 
-  <h2>Ajouter une liste</h2>
-  <div class="group">
-    <div class="row"><input id="subUrl" type="url" placeholder="https://… /sources.json" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
-  </div>
-  <button class="primary" id="addSubBtn">Ajouter</button>
-  <p class="foot">L'URL d'un fichier JSON au format « sources ». RR Streaming le télécharge et peut le resynchroniser à tout moment.</p>
+  <button class="hero-add" id="openWizard">
+    <span class="plus">+</span>
+    <span><strong>Ajouter une source</strong><span>Assistant pas à pas, sans JSON</span></span>
+    <span class="chev">›</span>
+  </button>
 
-  <h2 style="display:flex;justify-content:space-between;align-items:center;margin-right:4px">
-    <span>Listes</span><button id="syncAllBtn" style="font-size:15px;text-transform:none;letter-spacing:0">Tout synchroniser</button>
-  </h2>
-  <div class="group" id="subs"></div>
-
-  <h2>Sources</h2>
+  <h2><span>Sources</span></h2>
   <div class="group" id="providers"></div>
-  <p class="foot">Une source locale qui porte le même identifiant qu'une source de liste la remplace. Les désactivations sont conservées après synchronisation.</p>
 
-  <h2 id="editorTitle">Nouvelle source</h2>
-  <div class="seg" id="seg">
-    <button data-mode="provider" class="active">Une source</button>
-    <button data-mode="import">Fichier complet</button>
+  <h2><span>Listes</span><button id="syncAllBtn">Tout synchroniser</button></h2>
+  <div class="group" id="subs"></div>
+  <div class="group" style="margin-top:10px">
+    <div class="row"><input id="subUrl" type="url" placeholder="Ajouter une liste : https://…/sources.json" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="addSubBtn">Ajouter</button></div>
   </div>
-  <div class="group"><textarea id="editor" spellcheck="false" autocapitalize="off"></textarea></div>
-  <button class="primary" id="saveBtn">Enregistrer dans RR Streaming</button>
-  <button class="secondary" id="fileBtn">Charger un fichier .json…</button>
-  <button class="secondary hidden" id="cancelBtn">Annuler la modification</button>
-  <input type="file" id="file" accept="application/json,.json" class="hidden">
-  <p class="foot" id="editorFoot"></p>
+  <p class="foot">Une liste est un fichier JSON qui contient plusieurs sources ; RR Streaming peut la resynchroniser à tout moment.</p>
+
+  <details class="adv" id="adv">
+    <summary>Mode avancé (JSON)</summary>
+    <div class="seg" id="seg">
+      <button data-mode="provider" class="active">Une source</button>
+      <button data-mode="import">Fichier complet</button>
+    </div>
+    <div class="group"><textarea id="editor" spellcheck="false" autocapitalize="off"></textarea></div>
+    <button class="btn primary" id="saveBtn" style="margin-top:12px">Enregistrer</button>
+    <button class="btn secondary" id="fileBtn">Charger un fichier .json…</button>
+    <input type="file" id="file" accept="application/json,.json" class="hidden">
+    <p class="foot" id="editorFoot"></p>
+  </details>
 </main>
+
+<section id="wizard" aria-hidden="true">
+  <div class="wz-head">
+    <button class="icon" id="wzBack" aria-label="Retour">‹</button>
+    <div class="wz-progress" id="wzProgress"></div>
+    <button class="icon" id="wzClose" aria-label="Fermer">×</button>
+  </div>
+  <div class="wz-body" id="wzBody"></div>
+  <div class="wz-foot" id="wzFoot"></div>
+</section>
 
 <div class="toast" id="toast"></div>
 
@@ -135,37 +230,25 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
 
-  const TEMPLATE_PROVIDER = {
-    id: "ma-source", name: "Ma source", priority: 50, baseUrl: "https://exemple.org", language: "fr",
-    types: ["movie", "tv"],
-    search: {
-      url: "{baseUrl}/recherche?q={query}", query: "{title}", item: "article.card",
-      title: { css: "h3" }, year: { css: ".year", regex: "(\\d{4})" }, link: { css: "a", attr: "href" }
-    },
-    episodes: { urlTemplate: "{link}/saison-{season}/episode-{episode}" },
-    player: { iframe: { css: "iframe#player", attr: "src" } }
-  };
-  const TEMPLATE_DOC = { schemaVersion: 1, name: "Ma liste", providers: [TEMPLATE_PROVIDER] };
-
-  // ---------- Appairage
-  const params = new URLSearchParams(location.search);
-  let code = params.get("code") || sessionStorage.getItem("code") || "";
-  if (params.has("code")) { sessionStorage.setItem("code", code); history.replaceState(null, "", "/"); }
-
-  // ---------- Élément DOM sûr (aucun innerHTML : les noms viennent de JSON distants)
+  // ================================================================ Utilitaires
   function el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
+    for (const [k, v] of Object.entries(attrs || {})) {
       if (v == null || v === false) continue;
-      if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
       else if (k === "class") n.className = v;
+      else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
+      else if (k === "value") n.value = v;
       else n.setAttribute(k, v === true ? "" : v);
     }
-    for (const c of children.flat()) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    for (const c of children.flat(Infinity)) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
     return n;
   }
 
-  // ---------- API
+  const params = new URLSearchParams(location.search);
+  let code = params.get("code") || sessionStorage.getItem("code") || "";
+  if (params.has("code")) { sessionStorage.setItem("code", code); history.replaceState(null, "", "/" + location.hash); }
+
   async function api(method, path, body) {
     const res = await fetch(path, {
       method,
@@ -177,8 +260,10 @@
     try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
     if (res.status === 401) { showGate(); throw new Error(data.error || "Code incorrect"); }
     if (!res.ok) {
-      const details = (data.details || []).slice(0, 6).join("\n");
-      throw new Error((data.error || "Erreur " + res.status) + (details ? "\n" + details : ""));
+      const e = new Error(data.error || "Erreur " + res.status);
+      e.status = res.status;
+      e.details = data.details || [];
+      throw e;
     }
     return data;
   }
@@ -189,14 +274,12 @@
     t.textContent = msg; t.classList.toggle("err", isErr); t.classList.add("show");
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), isErr ? 6000 : 2500);
   }
+  const errText = (e) => [e.message, ...(e.details || []).slice(0, 4)].join("\n");
 
   async function act(fn, okMsg) {
     try { const s = await fn(); if (s && s.revision !== undefined) render(s); if (okMsg) toast(okMsg); return true; }
-    catch (e) { toast(e.message, true); return false; }
+    catch (e) { toast(errText(e), true); return false; }
   }
-
-  // ---------- Rendu
-  let state = null;
 
   function ago(ts) {
     if (!ts) return "jamais synchronisée";
@@ -210,105 +293,564 @@
 
   function toggle(checked, onchange) {
     return el("label", { class: "switch" },
-      el("input", { type: "checkbox", checked: checked, onchange: (e) => onchange(e.target.checked) }),
-      el("span"));
+      el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span"));
   }
+
+  const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+
+  // ================================================================ Liste principale
+  let state = null;
+  let builderAvailable = true;
 
   function render(s) {
     state = s;
     $("status").textContent = "Connecté à RR Streaming"; $("status").classList.add("on");
 
-    const subs = $("subs"); subs.replaceChildren();
-    if (!s.subscriptions.length) subs.append(el("div", { class: "empty" }, "Aucune liste ajoutée."));
-    for (const sub of s.subscriptions) {
-      const meta = `${sub.providerCount} source${sub.providerCount > 1 ? "s" : ""} · ${ago(sub.lastSyncAt)}`;
-      subs.append(el("div", { class: "row" + (sub.enabled ? "" : " dim") },
-        el("div", { class: "main" },
-          el("div", { class: "title" }, sub.name),
-          el("div", { class: "sub" }, sub.url),
-          el("div", { class: "sub" + (sub.lastError ? " err" : "") }, sub.lastError ? "⚠︎ " + sub.lastError : meta)),
-        el("div", { class: "actions" },
-          el("button", { onclick: () => act(() => api("POST", `/api/subscriptions/${sub.id}/sync`), "Liste synchronisée") }, "Sync"),
-          el("button", { class: "danger", onclick: () => confirm(`Supprimer « ${sub.name} » ?`) && act(() => api("DELETE", `/api/subscriptions/${sub.id}`), "Liste supprimée") }, "Suppr.")),
-        toggle(sub.enabled, (v) => act(() => api("POST", `/api/subscriptions/${sub.id}/toggle`, { enabled: v })))));
-    }
-
     const prov = $("providers"); prov.replaceChildren();
-    if (!s.providers.length) prov.append(el("div", { class: "empty" }, "Aucune source."));
+    if (!s.providers.length) prov.append(el("div", { class: "empty" }, "Aucune source pour l'instant. Touchez « Ajouter une source » pour commencer."));
     for (const e of s.providers) {
       const p = e.provider, local = e.subscriptionId == null;
       const types = (p.types || []).map((t) => (t === "movie" ? "Films" : "Séries")).join(" · ");
       prov.append(el("div", { class: "row" + (e.enabled ? "" : " dim") },
         el("div", { class: "main" },
           el("div", { class: "title" }, p.name),
-          el("div", { class: "sub" }, `${e.originName} · ${types} · priorité ${p.priority}`)),
+          el("div", { class: "sub" }, `${e.originName === "Local" ? hostOf(p.baseUrl) : e.originName} · ${types}`)),
         el("div", { class: "actions" },
-          el("button", { onclick: () => edit(p, local) }, local ? "Modifier" : "Copier"),
+          local ? el("button", { onclick: () => (builderAvailable ? Wizard.open(p) : editJson(p, true)) }, "Modifier")
+                : el("button", { onclick: () => editJson(p, false) }, "Copier"),
           local ? el("button", { class: "danger", onclick: () => confirm(`Supprimer « ${p.name} » ?`) && act(() => api("DELETE", `/api/providers/${encodeURIComponent(p.id)}`), "Source supprimée") }, "Suppr.") : null),
         toggle(e.enabled, (v) => act(() => api("POST", `/api/providers/${encodeURIComponent(p.id)}/toggle`, { enabled: v })))));
     }
+
+    const subs = $("subs"); subs.replaceChildren();
+    if (!s.subscriptions.length) subs.append(el("div", { class: "empty" }, "Aucune liste."));
+    for (const sub of s.subscriptions) {
+      const meta = `${sub.providerCount} source${sub.providerCount > 1 ? "s" : ""} · ${ago(sub.lastSyncAt)}`;
+      subs.append(el("div", { class: "row" + (sub.enabled ? "" : " dim") },
+        el("div", { class: "main" },
+          el("div", { class: "title" }, sub.name),
+          el("div", { class: "sub" + (sub.lastError ? " err" : "") }, sub.lastError ? "⚠︎ " + sub.lastError : meta)),
+        el("div", { class: "actions" },
+          el("button", { onclick: () => act(() => api("POST", `/api/subscriptions/${sub.id}/sync`), "Liste synchronisée") }, "Sync"),
+          el("button", { class: "danger", onclick: () => confirm(`Supprimer « ${sub.name} » ?`) && act(() => api("DELETE", `/api/subscriptions/${sub.id}`), "Liste supprimée") }, "Suppr.")),
+        toggle(sub.enabled, (v) => act(() => api("POST", `/api/subscriptions/${sub.id}/toggle`, { enabled: v })))));
+    }
   }
 
-  // ---------- Éditeur
-  let mode = "provider";
-  function setMode(m, value) {
-    mode = m;
-    document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === m));
-    $("editor").value = JSON.stringify(value ?? (m === "provider" ? TEMPLATE_PROVIDER : TEMPLATE_DOC), null, 2);
-    $("editorFoot").textContent = m === "provider"
-      ? "Une source au format du schéma. Elle est validée par l&apos;application avant d'être enregistrée."
-      : "Un document complet { schemaVersion, providers: [...] }. Toutes ses sources deviennent locales.";
-    $("editorTitle").textContent = m === "provider" ? "Nouvelle source" : "Importer un fichier";
-    $("cancelBtn").classList.add("hidden");
-  }
-  function edit(p, local) {
-    setMode("provider", local ? p : { ...p, id: p.id });
-    $("editorTitle").textContent = local ? `Modifier « ${p.name} »` : `Copie locale de « ${p.name} »`;
-    $("editorFoot").textContent = local ? "Enregistrer remplace la source." : "Garder le même id pour remplacer la source de la liste, ou changer l'id pour en créer une nouvelle.";
-    $("cancelBtn").classList.remove("hidden");
-    $("editor").scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  $("seg").addEventListener("click", (e) => { const m = e.target.dataset?.mode; if (m) setMode(m); });
-  $("cancelBtn").onclick = () => setMode("provider");
-  $("saveBtn").onclick = async () => {
-    const raw = $("editor").value;
-    try { JSON.parse(raw); } catch (e) { return toast("JSON invalide : " + e.message, true); }
-    const ok = mode === "provider"
-      ? await act(() => api("POST", "/api/providers", raw), "Source enregistrée")
-      : await act(() => api("POST", "/api/import", raw), "Fichier importé");
-    if (ok) setMode(mode);
-  };
-  $("fileBtn").onclick = () => $("file").click();
-  $("file").onchange = async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const text = await f.text(); e.target.value = "";
-    try {
-      const obj = JSON.parse(text);
-      setMode(Array.isArray(obj.providers) ? "import" : "provider", obj);
-    } catch (err) { toast("Fichier JSON invalide", true); }
-  };
-
-  // ---------- Actions
   $("addSubBtn").onclick = async () => {
     const url = $("subUrl").value.trim(); if (!url) return;
-    const btn = $("addSubBtn"); btn.disabled = true; btn.textContent = "Téléchargement…";
+    const btn = $("addSubBtn"); btn.disabled = true; btn.textContent = "…";
     if (await act(() => api("POST", "/api/subscriptions", { url }), "Liste ajoutée")) $("subUrl").value = "";
     btn.disabled = false; btn.textContent = "Ajouter";
   };
   $("subUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") $("addSubBtn").click(); });
   $("syncAllBtn").onclick = () => act(() => api("POST", "/api/sync"), "Synchronisation terminée");
+  $("openWizard").onclick = () => (builderAvailable ? Wizard.open() : ($("adv").open = true, toast("Mettez à jour RR Streaming sur la TV pour utiliser l'assistant.", true)));
 
-  // ---------- Gate
+  // ================================================================ Mode avancé (JSON)
+  const TEMPLATE_PROVIDER = {
+    id: "ma-source", name: "Ma source", priority: 50, baseUrl: "https://exemple.org", language: "fr", types: ["movie", "tv"],
+    search: { url: "{baseUrl}/recherche?q={query}", query: "{title}", item: "article.card", title: { css: "h3" }, year: { css: ".year", regex: "(\\d{4})" }, link: { css: "a", attr: "href" } },
+    episodes: { urlTemplate: "{link}/saison-{season}/episode-{episode}" },
+    player: { iframe: { css: "iframe#player", attr: "src" } },
+  };
+  let mode = "provider";
+  function setMode(m, value) {
+    mode = m;
+    document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === m));
+    $("editor").value = JSON.stringify(value ?? (m === "provider" ? TEMPLATE_PROVIDER : { schemaVersion: 1, name: "Ma liste", providers: [TEMPLATE_PROVIDER] }), null, 2);
+    $("editorFoot").textContent = m === "provider" ? "Une source au format du schéma, validée par l'application avant d'être enregistrée." : "Un document complet { schemaVersion, providers: [...] } ; toutes ses sources deviennent locales.";
+  }
+  function editJson(p, local) {
+    $("adv").open = true;
+    setMode("provider", p);
+    $("editorFoot").textContent = local ? "Enregistrer remplace la source." : "Garder le même id pour remplacer la source de la liste, ou changer l'id pour en créer une nouvelle.";
+    $("editor").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  $("seg").addEventListener("click", (e) => { const m = e.target.dataset && e.target.dataset.mode; if (m) setMode(m); });
+  $("saveBtn").onclick = async () => {
+    const raw = $("editor").value;
+    try { JSON.parse(raw); } catch (e) { return toast("JSON invalide : " + e.message, true); }
+    if (await act(() => api("POST", mode === "provider" ? "/api/providers" : "/api/import", raw), mode === "provider" ? "Source enregistrée" : "Fichier importé")) setMode(mode);
+  };
+  $("fileBtn").onclick = () => $("file").click();
+  $("file").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text(); e.target.value = "";
+    try { const obj = JSON.parse(text); setMode(Array.isArray(obj.providers) ? "import" : "provider", obj); }
+    catch { toast("Fichier JSON invalide", true); }
+  };
+
+  // ================================================================ Assistant
+  const Wizard = (() => {
+    const body = $("wzBody"), foot = $("wzFoot"), prog = $("wzProgress");
+    let W = null;
+    let index = 0;
+    let goingBack = false;
+
+    const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "source";
+    const uniqueId = (base, keep) => {
+      const ids = new Set((state ? state.providers : []).map((e) => e.provider.id));
+      if (keep) ids.delete(keep);
+      let id = base.length >= 2 ? base : `${base}-src`, n = 2;
+      while (ids.has(id)) id = `${base}-${n++}`;
+      return id;
+    };
+
+    function fresh() {
+      return {
+        name: "", site: "", types: ["movie", "tv"], language: "fr", priority: 50,
+        term: "dune", searchUrl: "", template: null,
+        analysis: null, choice: 0, manual: null,
+        showUrl: "", episodeUrl: "", season: 2, episode: 3, epTemplate: null,
+        movieUrl: "", iframes: null, iframeChoice: -1,
+        editingId: null, existing: null,
+      };
+    }
+
+    function fromProvider(p) {
+      const w = fresh();
+      w.editingId = p.id; w.existing = p;
+      w.name = p.name; w.site = p.baseUrl; w.types = p.types || ["movie", "tv"]; w.language = p.language || ""; w.priority = p.priority ?? 50;
+      w.template = p.search.url.replace("{baseUrl}", p.baseUrl.replace(/\/$/, ""));
+      w.searchUrl = w.template.replace("{query}", encodeURIComponent(w.term));
+      w.choice = -1;
+      w.manual = { item: p.search.item, title: p.search.title, link: p.search.link, year: p.search.year, poster: p.search.poster };
+      w.epTemplate = p.episodes && p.episodes.urlTemplate || null;
+      w.keepEpisodes = p.episodes && !p.episodes.urlTemplate ? p.episodes : null;
+      w.keepIframe = p.player && p.player.iframe || null;
+      w.keepPlayer = p.player || {};
+      return w;
+    }
+
+    const steps = () => ["site", "search", "results", ...(W.types.includes("tv") ? ["episodes"] : []), "player", "finish"];
+
+    function open(provider) {
+      W = provider ? fromProvider(provider) : fresh();
+      index = provider ? steps().indexOf("finish") : 0;
+      $("wizard").classList.add("open");
+      $("wizard").setAttribute("aria-hidden", "false");
+      document.body.classList.add("locked");
+      show();
+    }
+
+    function close() {
+      $("wizard").classList.remove("open");
+      $("wizard").setAttribute("aria-hidden", "true");
+      document.body.classList.remove("locked");
+      if (location.hash === "#add") history.replaceState(null, "", "/");
+    }
+
+    function go(delta) {
+      const list = steps();
+      const next = index + delta;
+      if (next < 0) return close();
+      if (next >= list.length) return;
+      goingBack = delta < 0;
+      index = next;
+      show();
+    }
+
+    function show() {
+      const list = steps();
+      const name = list[index];
+      prog.replaceChildren(...list.map((_, k) => el("span", { class: k <= index ? "done" : "" })));
+      $("wzBack").textContent = index === 0 ? "×" : "‹";
+      $("wzClose").classList.toggle("hidden", index === 0);
+      const step = el("div", { class: "wz-step" + (goingBack ? " back" : "") });
+      body.replaceChildren(step);
+      foot.replaceChildren();
+      body.scrollTop = 0;
+      STEPS[name](step, foot);
+    }
+
+    function footer(label, onClick, { enabled = true, secondary = null } = {}) {
+      const btn = el("button", { class: "btn primary", disabled: !enabled, onclick: onClick }, label);
+      foot.replaceChildren(...[btn, secondary].filter(Boolean));
+      return btn;
+    }
+
+    function head(step, kicker, title, lead) {
+      step.append(el("div", { class: "wz-kicker" }, kicker), el("div", { class: "wz-title", role: "heading", "aria-level": "2" }, title));
+      if (lead) step.append(el("p", { class: "wz-lead" }, lead));
+    }
+
+    function chip(label, on, onclick) {
+      return el("button", { class: "chip" + (on ? " on" : ""), onclick }, el("span", { class: "ck" }, on ? "✓" : ""), label);
+    }
+
+    function inputField(label, attrs, onInput) {
+      const input = el("input", { autocapitalize: "off", autocorrect: "off", spellcheck: "false", ...attrs });
+      input.addEventListener("input", () => onInput(input.value));
+      return { node: el("div", { class: "field" }, el("label", {}, label), input), input };
+    }
+
+    // -------- Dérivations automatiques
+    function deriveSearchTemplate(url, term) {
+      if (!url || !term) return null;
+      let u;
+      try { u = new URL(url.trim()); } catch { return null; }
+      const full = u.toString();
+      const variants = [...new Set([
+        encodeURIComponent(term), term, term.replace(/ /g, "+"), term.replace(/ /g, "-"),
+        encodeURIComponent(term.toLowerCase()), term.toLowerCase(), term.toLowerCase().replace(/ /g, "+"), term.toLowerCase().replace(/ /g, "-"),
+      ])];
+      const lower = full.toLowerCase();
+      for (const v of variants) {
+        const i = lower.indexOf(v.toLowerCase());
+        if (i >= 0 && i >= u.origin.length) return full.slice(0, i) + "{query}" + full.slice(i + v.length);
+      }
+      return null;
+    }
+
+    function deriveEpisodeTemplate(showUrl, epUrl, season, episode) {
+      const show = String(showUrl || "").trim().replace(/\/+$/, "");
+      const ep = String(epUrl || "").trim();
+      if (!show || !ep) return { error: null };
+      if (!ep.startsWith(show)) return { error: "L'adresse de l'épisode doit commencer par celle de la série. Vérifiez que vous avez ouvert un épisode de cette série." };
+      const rest = ep.slice(show.length);
+      let seasonDone = false, episodeDone = false;
+      const out = rest.replace(/\d+/g, (tok) => {
+        const n = Number(tok);
+        const padded = tok.length === 2 && tok.startsWith("0");
+        if (!seasonDone && n === Number(season)) { seasonDone = true; return padded ? "{season2}" : "{season}"; }
+        if (seasonDone && !episodeDone && n === Number(episode)) { episodeDone = true; return padded ? "{episode2}" : "{episode}"; }
+        return tok;
+      });
+      if (!seasonDone || !episodeDone) {
+        return { error: `Impossible de retrouver la saison ${season} et l'épisode ${episode} dans l'adresse. Vérifiez les numéros ci-dessus.` };
+      }
+      return { template: "{link}" + out };
+    }
+
+    const TOKENS = { "{query}": "titre recherché", "{link}": "série", "{season}": "saison", "{season2}": "saison", "{episode}": "épisode", "{episode2}": "épisode" };
+    function renderTemplate(tpl) {
+      return String(tpl).split(/(\{query\}|\{link\}|\{season2?\}|\{episode2?\})/).filter(Boolean)
+        .map((part) => (TOKENS[part] ? el("span", { class: "tok" }, TOKENS[part]) : part));
+    }
+
+    const selected = () => {
+      if (W.choice === -1) return W.manual;
+      const c = W.analysis && W.analysis.candidates[W.choice];
+      return c ? c.selectors : W.manual;
+    };
+
+    function buildProvider() {
+      const sel = selected() || {};
+      const site = new URL(W.site);
+      const baseUrl = site.origin;
+      const url = W.template.startsWith(baseUrl) ? "{baseUrl}" + W.template.slice(baseUrl.length) : W.template;
+      const p = {
+        id: W.editingId || uniqueId(slug(W.name)),
+        name: W.name.trim(),
+        enabled: true,
+        priority: W.priority,
+        baseUrl,
+        types: W.types,
+        search: { url, query: "{title}", item: sel.item, title: sel.title, link: sel.link },
+        player: { ...(W.keepPlayer || {}) },
+      };
+      if (W.language) p.language = W.language;
+      if (sel.year) p.search.year = sel.year;
+      if (sel.poster) p.search.poster = sel.poster;
+      if (W.types.includes("tv")) p.episodes = W.epTemplate ? { urlTemplate: W.epTemplate } : W.keepEpisodes || undefined;
+      const iframe = W.iframes && W.iframeChoice >= 0 ? W.iframes[W.iframeChoice].selector : (W.iframes ? null : W.keepIframe);
+      if (iframe) p.player.iframe = iframe; else delete p.player.iframe;
+      return p;
+    }
+
+    // -------- Étapes
+    const STEPS = {
+      site(step) {
+        head(step, "Étape 1", "Quel site voulez-vous ajouter\u00a0?", "Donnez-lui un nom, puis collez l'adresse de sa page d'accueil.");
+        const name = inputField("Nom", { type: "text", value: W.name, placeholder: "Ex. : Mon site de films", autocapitalize: "words" }, (v) => { W.name = v; check(); });
+        const site = inputField("Adresse du site", { type: "url", value: W.site, placeholder: "https://…", inputmode: "url" }, (v) => { W.site = v.trim(); check(); });
+        step.append(el("div", { class: "group" }, name.node, site.node));
+
+        step.append(el("div", { class: "label-sm" }, "Ce site propose"));
+        const typesBox = el("div", { class: "chips" });
+        const drawTypes = () => typesBox.replaceChildren(
+          chip("Films", W.types.includes("movie"), () => { flip("movie"); }),
+          chip("Séries", W.types.includes("tv"), () => { flip("tv"); }));
+        const flip = (t) => {
+          const has = W.types.includes(t);
+          if (has && W.types.length === 1) return toast("Choisissez au moins un type de contenu", true);
+          W.types = has ? W.types.filter((x) => x !== t) : [...W.types, t];
+          drawTypes();
+        };
+        drawTypes();
+        step.append(typesBox);
+
+        step.append(el("div", { class: "label-sm" }, "Langue des titres"));
+        const langBox = el("div", { class: "chips" });
+        const drawLang = () => langBox.replaceChildren(...[["fr", "Français"], ["en", "Anglais"], ["", "Autre"]].map(([v, l]) => chip(l, W.language === v, () => { W.language = v; drawLang(); })));
+        drawLang();
+        step.append(langBox);
+
+        const normalized = () => { try { const u = new URL(W.site.includes("://") ? W.site : "https://" + W.site); return /^https?:$/.test(u.protocol) && u.hostname.includes(".") ? u.toString() : null; } catch { return null; } };
+        const btn = footer("Continuer", () => { W.site = normalized(); go(1); });
+        function check() { btn.disabled = !(W.name.trim().length >= 2 && normalized()); }
+        check();
+        setTimeout(() => (W.name ? site.input : name.input).focus(), 350);
+      },
+
+      search(step) {
+        head(step, "Étape 2", "Montrez-nous la recherche", "RR Streaming doit savoir comment ce site affiche ses résultats de recherche.");
+        const termInput = el("input", { class: "inline-input", type: "text", value: W.term, autocapitalize: "off" });
+        termInput.addEventListener("input", () => { W.term = termInput.value.trim(); update(); });
+        step.append(el("ol", { class: "steps-list" },
+          el("li", {}, el("div", {}, "Ouvrez le site dans un autre onglet.", el("br"), el("a", { class: "link-btn", href: W.site, target: "_blank", rel: "noopener" }, `Ouvrir ${hostOf(W.site)} ↗`))),
+          el("li", {}, el("div", {}, "Cherchez ", termInput, " avec la recherche du site.")),
+          el("li", {}, "Copiez l'adresse de la page de résultats et collez-la ci-dessous.")));
+
+        const url = inputField("Adresse de la page de résultats", { type: "url", value: W.searchUrl, placeholder: `${W.site.replace(/\/$/, "")}/…${W.term}…`, inputmode: "url" }, (v) => { W.searchUrl = v.trim(); update(); });
+        step.append(el("div", { class: "group" }, url.node));
+        const out = el("div");
+        step.append(out);
+
+        const btn = footer("Analyser les résultats", () => { W.analysis = null; go(1); });
+        function update() {
+          W.template = deriveSearchTemplate(W.searchUrl, W.term);
+          out.replaceChildren();
+          if (!W.searchUrl) { btn.disabled = true; return; }
+          if (W.template) {
+            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle de recherche détecté"), renderTemplate(W.template)));
+          } else {
+            out.append(el("div", { class: "detect warn" }, el("b", {}, "Mot introuvable"),
+              `Le mot « ${W.term} » n'apparaît pas dans cette adresse. Vérifiez que vous avez bien copié l'adresse de la page de résultats, après avoir cherché « ${W.term} ».`));
+          }
+          btn.disabled = !W.template;
+        }
+        update();
+      },
+
+      async results(step) {
+        head(step, "Étape 3", "Quels sont les résultats\u00a0?", "Touchez la liste qui correspond aux résultats de votre recherche.");
+        const box = el("div");
+        step.append(box);
+        const btn = footer("Continuer", () => go(1), { enabled: false });
+
+        const draw = () => {
+          box.replaceChildren();
+          const cands = (W.analysis && W.analysis.candidates) || [];
+          cands.forEach((c, k) => {
+            box.append(el("button", { class: "cand" + (W.choice === k ? " on" : ""), onclick: () => { W.choice = k; draw(); } },
+              el("div", { class: "cand-head" }, el("span", {}, `${c.count} résultat${c.count > 1 ? "s" : ""} détecté${c.count > 1 ? "s" : ""}`), el("span", { class: "radio" })),
+              c.samples.slice(0, 4).map((s) => el("div", { class: "sample" },
+                el("div", { class: "thumb", style: s.poster ? { backgroundImage: `url("${s.poster.replace(/"/g, "%22")}")` } : {} }),
+                el("div", { class: "main" }, el("div", { class: "t" }, s.title), el("div", { class: "y" }, [s.year, hostOf(s.link) && new URL(s.link).pathname].filter(Boolean).join(" · ")))))));
+          });
+          if (W.existing && W.manual) {
+            box.append(el("button", { class: "cand" + (W.choice === -1 ? " on" : ""), onclick: () => { W.choice = -1; draw(); } },
+              el("div", { class: "cand-head" }, el("span", {}, "Garder la configuration actuelle"), el("span", { class: "radio" }))));
+          }
+          if (!cands.length) {
+            box.append(el("div", { class: "detect warn" }, el("b", {}, "Aucune liste trouvée"),
+              "Le site affiche peut-être ses résultats avec JavaScript, ou bloque les visites automatiques. Vous pouvez réessayer avec une autre recherche, ou utiliser le mode avancé (JSON)."));
+          }
+          btn.disabled = !(cands[W.choice] || (W.choice === -1 && W.manual));
+        };
+
+        if (!W.analysis) {
+          box.append(el("div", { class: "loading" }, el("div", { class: "spinner" }), "Analyse de la page…"));
+          try {
+            W.analysis = await api("POST", "/api/builder/analyze", { url: W.searchUrl });
+            W.choice = W.existing ? -1 : W.analysis.candidates.length ? 0 : -1;
+          } catch (e) {
+            W.analysis = { candidates: [] };
+            toast(errText(e), true);
+          }
+        }
+        draw();
+      },
+
+      episodes(step) {
+        head(step, "Étape 4", "Et pour les séries\u00a0?", "Pour trouver un épisode, RR Streaming a besoin d'un exemple d'adresse.");
+        const showField = inputField("1. Adresse d'une série sur le site", { type: "url", value: W.showUrl, placeholder: "https://…/serie/…", inputmode: "url" }, (v) => { W.showUrl = v; update(); });
+        const epField = inputField("2. Adresse d'un de ses épisodes", { type: "url", value: W.episodeUrl, placeholder: "https://…/serie/…/saison-2/episode-3", inputmode: "url" }, (v) => { W.episodeUrl = v; update(); });
+        step.append(el("div", { class: "group" }, showField.node, epField.node));
+
+        const stepper = (label, key) => {
+          const outN = el("output", {}, W[key]);
+          const set = (d) => { W[key] = Math.max(1, Math.min(99, W[key] + d)); outN.textContent = W[key]; update(); };
+          return el("div", { class: "group" }, el("span", { style: { fontSize: "15px", color: "var(--label2)" } }, label),
+            el("div", { class: "stepper" }, el("button", { onclick: () => set(-1) }, "−"), outN, el("button", { onclick: () => set(1) }, "+")));
+        };
+        step.append(el("div", { class: "label-sm" }, "3. Numéros de cet épisode"), el("div", { class: "two" }, stepper("Saison", "season"), stepper("Épisode", "episode")));
+        step.append(el("p", { class: "foot", style: { margin: "10px 4px 0" } }, "Astuce : choisissez un épisode dont le numéro est différent de la saison (par exemple saison 2, épisode 3)."));
+        const out = el("div");
+        step.append(out);
+
+        const btn = footer("Continuer", () => go(1), {
+          secondary: el("button", { class: "btn ghost", onclick: () => { W.types = ["movie"]; W.epTemplate = null; index = steps().indexOf("player"); goingBack = false; show(); } }, "Ce site n'a pas de séries"),
+        });
+        function update() {
+          const r = deriveEpisodeTemplate(W.showUrl, W.episodeUrl, W.season, W.episode);
+          W.epTemplate = r.template || (W.showUrl || W.episodeUrl ? null : W.epTemplate);
+          out.replaceChildren();
+          if (r.template) {
+            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle d'épisode détecté"), renderTemplate(r.template)));
+          } else if (r.error) {
+            out.append(el("div", { class: "detect warn" }, el("b", {}, "À vérifier"), r.error));
+          } else if (W.epTemplate) {
+            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle actuel"), renderTemplate(W.epTemplate)));
+          }
+          btn.disabled = !(W.epTemplate || W.keepEpisodes);
+        }
+        update();
+      },
+
+      player(step) {
+        head(step, W.types.includes("tv") ? "Étape 5" : "Étape 4", "Où est le lecteur vidéo\u00a0?", "Facultatif. Collez l'adresse de la page d'un film ou d'un épisode : RR Streaming repère le lecteur intégré.");
+        const first = W.analysis && W.analysis.candidates[W.choice] && W.analysis.candidates[W.choice].samples[0];
+        if (!W.movieUrl && first) W.movieUrl = first.link;
+        const field = inputField("Adresse d'une page de lecture", { type: "url", value: W.movieUrl, placeholder: "https://…", inputmode: "url" }, (v) => { W.movieUrl = v.trim(); });
+        const analyze = el("button", { class: "btn secondary", style: { marginTop: "12px" }, onclick: run }, "Chercher le lecteur");
+        step.append(el("div", { class: "group" }, field.node), analyze);
+        const box = el("div", { style: { marginTop: "18px" } });
+        step.append(box);
+
+        footer("Continuer", () => go(1));
+
+        const draw = () => {
+          box.replaceChildren();
+          if (!W.iframes) {
+            if (W.keepIframe) box.append(el("div", { class: "detect ok" }, el("b", {}, "Configuration actuelle"), `Lecteur dans l'iframe ${W.keepIframe.css}`));
+            return;
+          }
+          const option = (k, title, sub, badge) => el("button", { class: "cand" + (W.iframeChoice === k ? " on" : ""), onclick: () => { W.iframeChoice = k; draw(); } },
+            el("div", { class: "cand-head", style: { color: "var(--label)" } },
+              el("span", {}, el("div", { style: { fontSize: "16px", fontWeight: "600" } }, title), el("div", { style: { fontSize: "13px", color: "var(--label2)", marginTop: "2px" } }, sub)),
+              el("span", { style: { display: "flex", gap: "10px", alignItems: "center" } }, badge, el("span", { class: "radio" }))));
+          W.iframes.forEach((f, k) => box.append(option(k, f.host, f.trailer ? "Bande-annonce" : "Lecteur intégré",
+            f.likely ? el("span", { class: "badge good" }, "Probable") : f.trailer ? el("span", { class: "badge" }, "Vidéo annexe") : null)));
+          box.append(option(-1, "Laisser RR Streaming chercher", "La vidéo est détectée directement dans la page", W.iframes.length ? null : el("span", { class: "badge good" }, "Recommandé")));
+        };
+
+        async function run() {
+          if (!W.movieUrl) return toast("Collez l'adresse d'une page de lecture", true);
+          box.replaceChildren(el("div", { class: "loading", style: { padding: "30px 0" } }, el("div", { class: "spinner" }), "Recherche du lecteur…"));
+          analyze.disabled = true;
+          try {
+            const a = await api("POST", "/api/builder/analyze", { url: W.movieUrl });
+            W.iframes = a.iframes;
+            const k = a.iframes.findIndex((f) => f.likely);
+            W.iframeChoice = k;
+          } catch (e) {
+            W.iframes = null;
+            toast(errText(e), true);
+          }
+          analyze.disabled = false;
+          draw();
+        }
+        draw();
+      },
+
+      finish(step) {
+        let provider;
+        try { provider = buildProvider(); } catch { provider = null; }
+        head(step, "Dernière étape", W.editingId ? "Vérifiez la source" : "Presque fini\u00a0!", "Vérifiez le récapitulatif, puis lancez un test avec un vrai titre.");
+        if (!provider) { step.append(el("div", { class: "detect warn" }, "La configuration est incomplète.")); return; }
+
+        const sel = provider.search;
+        const iframe = provider.player.iframe;
+        const row = (k, v, onEdit) => el("div", { class: "row", onclick: onEdit, style: { cursor: onEdit ? "pointer" : "default" } },
+          el("span", { class: "k" }, k), el("span", { class: "v" }, v), onEdit ? el("span", { style: { color: "var(--label3)" } }, "›") : null);
+        const jump = (name) => () => { goingBack = true; index = steps().indexOf(name); show(); };
+        step.append(el("div", { class: "group summary" },
+          row("Nom", provider.name, jump("site")),
+          row("Site", hostOf(provider.baseUrl), jump("site")),
+          row("Contenus", provider.types.map((t) => (t === "movie" ? "Films" : "Séries")).join(" · "), jump("site")),
+          row("Recherche", sel.url.replace("{baseUrl}", "").replace("{query}", "…"), jump("search")),
+          row("Résultats", [W.analysis && W.analysis.candidates[W.choice] ? `${W.analysis.candidates[W.choice].count} détectés` : "Configurés", sel.year ? "année" : null, sel.poster ? "affiche" : null].filter(Boolean).join(" · "), jump("results")),
+          provider.types.includes("tv") ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate
+            ? provider.episodes.urlTemplate.replace("{link}", "…").replace("{season2}", "02").replace("{season}", "2").replace("{episode2}", "03").replace("{episode}", "3")
+            : "Liste d'épisodes") : "—", jump("episodes")) : null,
+          row("Lecteur", iframe ? (W.iframes && W.iframes[W.iframeChoice] ? W.iframes[W.iframeChoice].host : "Iframe configurée") : "Détection automatique", jump("player"))));
+
+        step.append(el("div", { class: "label-sm" }, "Priorité"));
+        const prio = el("div", { class: "seg", style: { marginBottom: "6px" } });
+        const drawPrio = () => prio.replaceChildren(...[[30, "Basse"], [50, "Normale"], [80, "Haute"]].map(([v, l]) =>
+          el("button", { class: W.priority === v || (l === "Normale" && ![30, 50, 80].includes(W.priority)) ? "active" : "", onclick: () => { W.priority = v; drawPrio(); } }, l)));
+        drawPrio();
+        step.append(prio, el("p", { class: "foot", style: { margin: "0 4px" } }, "Les sources de priorité haute sont essayées en premier au lancement d'un média."));
+
+        step.append(el("div", { class: "label-sm" }, "Tester la recherche"));
+        const t = el("input", { type: "text", value: W.testTitle || "", placeholder: "Titre d'un film ou d'une série", autocapitalize: "words" });
+        const y = el("input", { type: "number", value: W.testYear || "", placeholder: "Année", inputmode: "numeric", style: { width: "90px", textAlign: "right" } });
+        step.append(el("div", { class: "group" }, el("div", { class: "row" }, t, y)));
+        const testBtn = el("button", { class: "btn secondary", style: { marginTop: "10px" }, onclick: runTest }, "Lancer le test");
+        const res = el("div", { class: "test-result" });
+        step.append(testBtn, res);
+
+        async function runTest() {
+          W.testTitle = t.value.trim(); W.testYear = y.value.trim();
+          if (!W.testTitle) return toast("Indiquez un titre", true);
+          testBtn.disabled = true; testBtn.textContent = "Recherche…";
+          res.replaceChildren();
+          try {
+            const r = await api("POST", "/api/builder/test", { provider: buildProvider(), title: W.testTitle, year: W.testYear, type: provider.types[0] });
+            if (r.best) {
+              res.append(el("div", { class: "detect ok", style: { wordBreak: "normal" } }, el("b", {}, `Trouvé · correspondance ${Math.round(Math.min(1, r.best.score) * 100)} %`),
+                el("div", { style: { fontSize: "16px", fontWeight: "600" } }, r.best.title, r.best.year ? ` (${r.best.year})` : ""),
+                el("div", { style: { fontSize: "13px", color: "var(--label2)", wordBreak: "break-all" } }, r.best.link)));
+            } else {
+              res.append(el("div", { class: "detect warn" }, el("b", {}, r.results.length ? `${r.results.length} résultat(s), aucun ne correspond` : "Aucun résultat"),
+                r.results.length ? r.results.slice(0, 5).map((x) => el("div", {}, `• ${x.title}${x.year ? ` (${x.year})` : ""}`)) : "Essayez un autre titre, ou vérifiez l'étape « Recherche »."));
+            }
+          } catch (e) {
+            res.append(el("div", { class: "detect warn" }, el("b", {}, "Erreur"), errText(e)));
+          }
+          testBtn.disabled = false; testBtn.textContent = "Lancer le test";
+        }
+
+        footer(W.editingId ? "Enregistrer les modifications" : "Ajouter la source", async (e) => {
+          const b = e.currentTarget;
+          b.disabled = true;
+          try {
+            const s = await api("POST", "/api/providers", buildProvider());
+            render(s);
+            body.replaceChildren(el("div", { class: "wz-step done-screen" },
+              el("div", { class: "check" }, svgCheck()),
+              el("div", { class: "wz-title", role: "heading", "aria-level": "2" }, W.editingId ? "Source mise à jour" : "Source ajoutée"),
+              el("p", { class: "wz-lead" }, `« ${provider.name} » est disponible dans RR Streaming.`)));
+            prog.replaceChildren(...steps().map(() => el("span", { class: "done" })));
+            foot.replaceChildren(el("button", { class: "btn white", onclick: close }, "Terminé"));
+          } catch (err) {
+            toast(errText(err), true);
+            b.disabled = false;
+          }
+        });
+      },
+    };
+
+    function svgCheck() {
+      const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      s.setAttribute("viewBox", "0 0 24 24");
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", "M5 12.5l4.5 4.5L19 7.5");
+      p.setAttribute("fill", "none"); p.setAttribute("stroke", "#fff"); p.setAttribute("stroke-width", "2.6");
+      p.setAttribute("stroke-linecap", "round"); p.setAttribute("stroke-linejoin", "round");
+      s.append(p);
+      return s;
+    }
+
+    $("wzBack").onclick = () => go(-1);
+    $("wzClose").onclick = () => { if (confirm("Quitter l'assistant ? Les informations saisies seront perdues.")) close(); };
+
+    return { open, close, deriveSearchTemplate, deriveEpisodeTemplate };
+  })();
+  window.__wizard = Wizard;
+
+  // ================================================================ Appairage & rafraîchissement
   function showGate() { $("gate").classList.add("show"); $("codeInput").focus(); }
   $("codeBtn").onclick = async () => {
     code = $("codeInput").value.replace(/\D/g, "");
     sessionStorage.setItem("code", code);
-    if (await act(() => api("GET", "/api/state"))) $("gate").classList.remove("show");
+    if (await act(() => api("GET", "/api/state"))) { $("gate").classList.remove("show"); afterAuth(); }
   };
   $("codeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("codeBtn").click(); });
 
-  // ---------- Rafraîchissement (la TV peut aussi modifier l'état)
   async function poll() {
     if (document.hidden || $("gate").classList.contains("show")) return;
     try {
@@ -319,8 +861,16 @@
     }
   }
 
+  let authed = false;
+  async function afterAuth() {
+    if (authed) return;
+    authed = true;
+    try { await api("GET", "/api/builder"); } catch (e) { if (e.status === 404) builderAvailable = false; }
+    if (location.hash === "#add" && builderAvailable) Wizard.open();
+  }
+
   setMode("provider");
-  if (!code) showGate(); else poll();
+  if (!code) showGate(); else poll().then(() => { if (state) afterAuth(); });
   setInterval(poll, 3000);
   document.addEventListener("visibilitychange", poll);
 })();

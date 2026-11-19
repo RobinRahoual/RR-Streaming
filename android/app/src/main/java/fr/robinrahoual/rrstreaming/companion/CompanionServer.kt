@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class CompanionServer private constructor(
     private val context: Context,
     private val repo: SourceRepository,
+    private val analyzer: BuilderAnalyzer,
     port: Int,
 ) : NanoHTTPD(port) {
 
@@ -33,6 +34,8 @@ class CompanionServer private constructor(
 
     @Serializable private data class UrlBody(val url: String)
     @Serializable private data class ToggleBody(val enabled: Boolean)
+    @Serializable private data class AnalyzeBody(val url: String, val headers: Map<String, String> = emptyMap())
+    @Serializable private data class TestBody(val provider: SourceProvider, val title: String = "", val year: String? = null, val type: String = "movie")
     @Serializable private data class ErrorBody(val error: String, val details: List<String> = emptyList())
 
     @Serializable
@@ -117,6 +120,20 @@ class CompanionServer private constructor(
                 state()
             }
 
+            // Assistant de création de source
+            m == Method.GET && seg == listOf("builder") -> json(Response.Status.OK, "{\"version\":1}")
+            m == Method.POST && seg == listOf("builder", "analyze") -> {
+                val b = decode(AnalyzeBody.serializer(), body(s))
+                val r = runBlocking { runCatching { analyzer.analyzeUrl(b.url, b.headers) } }.orThrowHttp()
+                json(Response.Status.OK, SourcesJson.encodeToString(BuilderAnalyzer.AnalyzeResult.serializer(), r))
+            }
+            m == Method.POST && seg == listOf("builder", "test") -> {
+                val b = decode(TestBody.serializer(), body(s))
+                val kind = if (b.type == "tv") MediaKind.TV else MediaKind.MOVIE
+                val r = runBlocking { runCatching { analyzer.test(b.provider, b.title, b.year, kind) } }.orThrowHttp()
+                json(Response.Status.OK, SourcesJson.encodeToString(BuilderAnalyzer.TestResult.serializer(), r))
+            }
+
             else -> throw HttpError(Response.Status.NOT_FOUND, "Route inconnue : ${m.name} $path")
         }
     }
@@ -196,10 +213,11 @@ class CompanionServer private constructor(
 
         /** Démarre sur le premier port libre de la plage. Bloquant : appeler hors du thread principal. */
         @Throws(IOException::class)
-        fun start(context: Context, repo: SourceRepository, ports: IntRange = 8080..8090): CompanionServer {
+        fun start(context: Context, repo: SourceRepository, scraper: SourceScraper, ports: IntRange = 8080..8090): CompanionServer {
             var last: IOException? = null
+            val analyzer = BuilderAnalyzer(scraper)
             for (port in ports) {
-                val server = CompanionServer(context.applicationContext, repo, port)
+                val server = CompanionServer(context.applicationContext, repo, analyzer, port)
                 try {
                     server.start(SOCKET_READ_TIMEOUT, true)
                     return server

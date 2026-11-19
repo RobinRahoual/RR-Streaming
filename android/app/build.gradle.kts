@@ -19,8 +19,8 @@ android {
         applicationId = "fr.robinrahoual.rrstreaming"
         minSdk = 25 // Fire OS 6 (Fire TV Stick 2e gén.) et plus récents
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.1"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {

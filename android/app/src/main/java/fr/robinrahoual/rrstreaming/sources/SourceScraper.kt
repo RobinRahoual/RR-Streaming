@@ -71,6 +71,9 @@ class SourceScraper(private val http: OkHttpClient) {
         return PlayerPage(if (src.startsWith("//")) "https:$src" else src, doc.location())
     }
 
+    /** Télécharge et parse une page (utilisé par l'assistant de création). */
+    suspend fun fetchDocument(url: String, headers: Map<String, String> = emptyMap()) = fetch(url, headers)
+
     // ------------------------------------------------------------------ Interne
 
     private suspend fun fetch(url: String, headers: Map<String, String>) = withContext(Dispatchers.IO) {

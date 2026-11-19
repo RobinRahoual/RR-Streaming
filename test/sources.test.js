@@ -12,6 +12,7 @@ const { SourceRepository } = require('../src/main/sources/repository');
 const scraper = require('../src/main/sources/scraper');
 const { createClassifier, rank } = require('../src/main/resolver/classifier');
 const { CompanionServer } = require('../src/main/companion/server');
+const { analyzeHtml } = require('../src/main/sources/builder');
 
 const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures-sources.json'), 'utf8'));
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rr-'));
@@ -214,5 +215,58 @@ test('compagnon : page publique, API protégée par code', async () => {
     assert.strictEqual((await toggled.json()).providers[0].enabled, false);
   } finally {
     companion.stop();
+  }
+});
+
+// ------------------------------------------------------------ Assistant de création
+
+test('assistant : détecte la liste de résultats sans le menu ni le pied de page', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'search-page.html'), 'utf8');
+  const r = analyzeHtml(html, 'https://cine.exemple.org/recherche?q=dune');
+  assert.strictEqual(r.candidates.length, 1);
+  const c = r.candidates[0];
+  assert.strictEqual(c.selectors.item, 'article.movie-card');
+  assert.deepStrictEqual(c.samples.map((x) => x.year), ['2021', '1984', '2024', '2024']);
+  assert.strictEqual(c.samples[0].poster, 'https://cine.exemple.org/img/dune.jpg');
+  assert.strictEqual(c.samples[0].link, 'https://cine.exemple.org/film/dune-2021');
+  // Les sélecteurs proposés forment une source valide
+  const provider = { id: 'cine', name: 'Ciné', baseUrl: 'https://cine.exemple.org', types: ['movie'], search: { url: '{baseUrl}/recherche?q={query}', ...c.selectors } };
+  assert.deepStrictEqual(validateProvider(provider), []);
+});
+
+test('assistant : iframe du lecteur avant la bande-annonce, pubs exclues', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'movie-page.html'), 'utf8');
+  const r = analyzeHtml(html, 'https://cine.exemple.org/film/dune-2021');
+  assert.deepStrictEqual(r.iframes.map((i) => i.selector.css), ['iframe#player', 'iframe.trailer']);
+  assert.strictEqual(r.iframes[0].selector.attr, 'data-src');
+  assert.strictEqual(r.iframes[0].src, 'https://lecteur.exemple.net/embed/xyz');
+});
+
+test('assistant : analyse et test via l\'API du compagnon', async () => {
+  const pages = {
+    '/recherche': fs.readFileSync(path.join(__dirname, 'fixtures', 'search-page.html'), 'utf8'),
+  };
+  const { srv, base } = await serve((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (pages[u.pathname]) return res.end(pages[u.pathname]);
+    res.statusCode = 404; res.end();
+  });
+  const repo = new SourceRepository(tmpDir());
+  repo.load();
+  const companion = new CompanionServer(repo);
+  const info = await companion.start([18090, 18091, 18092]);
+  const api = (p, b) => fetch(`http://127.0.0.1:${info.port}${p}`, { method: 'POST', headers: { 'X-Pairing-Code': info.code }, body: JSON.stringify(b) });
+  try {
+    const a = await (await api('/api/builder/analyze', { url: `${base}/recherche?q=dune` })).json();
+    assert.strictEqual(a.candidates[0].selectors.item, 'article.movie-card');
+    const provider = { id: 'cine', name: 'Ciné', baseUrl: base, types: ['movie'], search: { url: '{baseUrl}/recherche?q={query}', ...a.candidates[0].selectors } };
+    const t = await (await api('/api/builder/test', { provider, title: 'Dune', year: '1984' })).json();
+    assert.strictEqual(t.best.link, `${base}/film/dune-1984`);
+    const bad = await api('/api/builder/test', { provider: { id: 'x' }, title: 'Dune' });
+    assert.strictEqual(bad.status, 400);
+  } finally {
+    companion.stop();
+    srv.close();
   }
 });

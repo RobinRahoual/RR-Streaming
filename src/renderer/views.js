@@ -326,6 +326,7 @@ const Views = (() => {
   function sources(view) {
     const S = window.rr.sources;
     const lists = el('div');
+    const wizardLink = el('a', { class: 'pill white', 'data-focus': true, target: '_blank', style: { pointerEvents: 'none', opacity: 0.5 } }, '+ Ajouter une source');
     const panel = el('aside', { class: 'panel' }, el('h3', {}, 'Gérer depuis un autre appareil'), el('p', {}, 'Démarrage du serveur local…'));
     const urlInput = el('input', { class: 'input', type: 'url', placeholder: 'URL d\'un fichier de sources (.json)', 'data-focus': true, spellcheck: 'false' });
     const fileInput = el('input', { type: 'file', accept: 'application/json,.json', class: 'hidden' });
@@ -413,6 +414,8 @@ const Views = (() => {
         el('div', {},
           el('h1', { class: 'page-title' }, 'Sources'),
           el('p', { class: 'page-sub' }, 'Les sources servent uniquement à trouver la lecture d\'un titre du catalogue.'),
+          el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', margin: '0 0 22px' } }, wizardLink,
+            el('span', { style: { color: 'var(--fg2)', fontSize: '15px' } }, 'Assistant pas à pas dans votre navigateur, sans JSON')),
           el('div', { class: 'field' }, urlInput, addBtn,
             el('button', { class: 'pill', 'data-focus': true, onclick: () => fileInput.click() }, 'Importer…'), fileInput),
           lists),
@@ -422,6 +425,8 @@ const Views = (() => {
     const off = S.onChange(render);
 
     call(window.rr.companion.start()).then((info) => {
+      wizardLink.href = `http://localhost:${info.port}/?code=${info.code}#add`;
+      wizardLink.style.pointerEvents = ''; wizardLink.style.opacity = '';
       if (!info.url) {
         panel.replaceChildren(
           el('h3', {}, 'Réseau local indisponible'),

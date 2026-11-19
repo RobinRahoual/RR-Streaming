@@ -9,6 +9,7 @@ import fr.robinrahoual.rrstreaming.companion.LocalNetwork
 import fr.robinrahoual.rrstreaming.companion.QrCode
 import fr.robinrahoual.rrstreaming.sources.ProviderEntry
 import fr.robinrahoual.rrstreaming.sources.SourceRepository
+import fr.robinrahoual.rrstreaming.sources.SourceScraper
 import fr.robinrahoual.rrstreaming.sources.Subscription
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,6 +37,7 @@ data class SourcesUiState(
 class SourcesViewModel(
     app: Application,
     private val repo: SourceRepository,
+    private val scraper: SourceScraper,
 ) : AndroidViewModel(app) {
 
     private var server: CompanionServer? = null
@@ -53,7 +55,7 @@ class SourcesViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val ip = LocalNetwork.localIpv4()
             if (ip == null) { companion.value = CompanionState.NoNetwork; return@launch }
-            runCatching { CompanionServer.start(getApplication(), repo) }
+            runCatching { CompanionServer.start(getApplication(), repo, scraper) }
                 .onSuccess { srv ->
                     server = srv
                     val base = "http://$ip:${srv.listeningPort}"
@@ -111,7 +113,8 @@ class SourcesViewModel(
                 extras: androidx.lifecycle.viewmodel.CreationExtras,
             ): T {
                 val app = extras[androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]!!
-                return SourcesViewModel(app, (app as fr.robinrahoual.rrstreaming.RRStreamingApp).sources) as T
+                val rr = app as fr.robinrahoual.rrstreaming.RRStreamingApp
+                return SourcesViewModel(app, rr.sources, rr.scraper) as T
             }
         }
     }

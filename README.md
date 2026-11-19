@@ -27,6 +27,18 @@ Catalogue TMDB ──► Fiche (film / épisode) ──► Lire
            5. lecture HLS (hls.js), DASH (dash.js) ou MP4, headers rejoués sur chaque segment
 ```
 
+### Ajouter une source (assistant)
+
+Onglet **Sources → + Ajouter une source** (ou depuis le téléphone via le QR code). L'assistant se fait en cinq étapes, sans JSON ni CSS :
+
+1. **Site** : nom, adresse, films et/ou séries, langue.
+2. **Recherche** : chercher un mot sur le site et coller l'adresse de la page de résultats ; le modèle de recherche est déduit automatiquement.
+3. **Résultats** : RR Streaming analyse la page et propose les listes détectées (affiche, titre, année) ; il suffit de toucher la bonne.
+4. **Séries** : coller l'adresse d'une série et d'un de ses épisodes ; le modèle d'adresse des épisodes est déduit.
+5. **Lecteur** (facultatif) : coller une page de lecture ; l'iframe du lecteur est repérée, bandes-annonces et publicités écartées.
+
+Un récapitulatif permet ensuite de choisir la priorité et de **tester la recherche** avec un vrai titre avant d'enregistrer. « Modifier » rouvre l'assistant sur une source existante. Le mode avancé (JSON) reste disponible.
+
 ### Sources
 
 - **Listes** : URL d'un fichier JSON (format décrit dans [`docs/sources.schema.json`](docs/sources.schema.json), exemple dans [`docs/sources.example.json`](docs/sources.example.json)). Synchronisation avec ETag ; une liste en erreur garde ses anciennes sources.
