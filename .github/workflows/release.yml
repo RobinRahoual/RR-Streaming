@@ -43,10 +43,23 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
 
-      - name: Construire et publier l'installateur
+      - name: Construire l'installateur et l'envoyer dans une release brouillon
         run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # La release n'est rendue publique qu'une fois l'installateur et latest.yml envoyés :
+      # les installations existantes ne voient jamais une release incomplète.
+      - name: Publier la release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          gh release view "$TAG" --json assets -q '.assets[].name' | tee assets.txt
+          grep -q '^latest.yml$' assets.txt || { echo "::error::latest.yml manquant"; exit 1; }
+          grep -q '\.exe$' assets.txt || { echo "::error::installateur manquant"; exit 1; }
+          gh release edit "$TAG" --draft=false --latest
 
       - uses: actions/upload-artifact@v4
         with:
