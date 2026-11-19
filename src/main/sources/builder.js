@@ -8,7 +8,8 @@
  * Le port Kotlin (BuilderAnalyzer.kt) suit le même algorithme.
  */
 const cheerio = require('cheerio');
-const { fetchHtml, extract, search } = require('./scraper');
+const scraper = require('./scraper');
+const { extract, search } = scraper;
 const { validateProvider, normalizeProvider, SourceValidationError } = require('./validator');
 
 const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'svg', 'path', 'head', 'meta', 'link', 'template', 'option', 'select', 'form', 'input', 'button']);
@@ -153,7 +154,8 @@ function findResultCandidates($, pageUrl) {
 
     const uniqueLinks = new Set(results.map((r) => r.link)).size / results.length;
     const avgTitle = results.reduce((s, r) => s + r.title.length, 0) / results.length;
-    const inNav = $(members[0]).closest(NAV_ANCESTORS).length > 0;
+    // Les résultats ne sont jamais dans l'en-tête, le menu ou le pied de page.
+    if ($(members[0]).closest(NAV_ANCESTORS).length > 0) continue;
     const score =
       Math.min(results.length, 30) *
       uniqueLinks *
@@ -163,8 +165,7 @@ function findResultCandidates($, pageUrl) {
       (goodClasses(members[0]).length ? 1.1 : 1) *
       (/^(article|li)$/.test(members[0].tagName) || /card|item|movie|film|serie|show|result|post|entry|poster/i.test(goodClasses(members[0]).join(' ')) ? 1.25 : 1) *
       (/(^|\s)(col|row|grid|container|wrapper)/i.test(goodClasses(members[0]).join(' ')) ? 0.85 : 1) *
-      (avgTitle < 4 ? 0.3 : 1) *
-      (inNav ? 0.15 : 1);
+      (avgTitle < 4 ? 0.3 : 1);
 
     candidates.push({ selectors: item, count: results.length, samples: results.slice(0, 5), score, linkKey: results.slice(0, 5).map((r) => r.link).join('|') });
   }
@@ -216,11 +217,32 @@ function analyzeHtml(html, pageUrl) {
   };
 }
 
-async function analyzeUrl(url, headers = {}) {
+/**
+ * Analyse une page. Si le HTML brut ne donne rien (site construit en JavaScript, ou visite
+ * automatique refusée), la page est rendue dans un navigateur invisible puis réanalysée.
+ * `rendered: true` dans la réponse indique que la source devra utiliser ce rendu (provider.render).
+ */
+async function analyzeUrl(url, headers = {}, { render = false } = {}) {
   const u = absolute(String(url || '').trim().includes('://') ? url : `https://${url}`, 'https://x');
   if (!u) throw new Error('Adresse invalide');
-  const { html, url: finalUrl } = await fetchHtml(u, headers);
-  return analyzeHtml(html, finalUrl);
+
+  if (!render) {
+    let staticResult = null;
+    let staticError = null;
+    try {
+      const { html, url: finalUrl } = await scraper.fetchHtml(u, headers);
+      staticResult = analyzeHtml(html, finalUrl);
+    } catch (err) {
+      staticError = err;
+    }
+    const useful = staticResult && (staticResult.candidates.length || staticResult.iframes.length);
+    if (useful || !scraper.canRender()) {
+      if (staticResult) return { ...staticResult, rendered: false };
+      throw staticError;
+    }
+  }
+  const { html, url: finalUrl } = await scraper.fetchPage(u, headers, true);
+  return { ...analyzeHtml(html, finalUrl), rendered: true };
 }
 
 /** Recherche réelle avec une source en cours de création. */

@@ -50,6 +50,11 @@
           "additionalProperties": { "type": "string" },
           "description": "Headers HTTP envoyés pour la recherche et les pages."
         },
+        "render": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pages construites en JavaScript : la recherche et les pages sont rendues dans un navigateur invisible avant lecture des sélecteurs (plus lent)."
+        },
         "search": {
           "type": "object",
           "required": ["url", "item", "title", "link"],

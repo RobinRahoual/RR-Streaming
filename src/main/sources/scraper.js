@@ -108,6 +108,20 @@ function firstInt(v) {
   return m ? Number(m[0]) : NaN;
 }
 
+// ------------------------------------------------------------ Rendu JavaScript (fourni par le processus Electron)
+
+let pageRenderer = null;
+/** fn(url, { headers }) → { html, url } : page rendue dans un navigateur invisible. */
+function setPageRenderer(fn) { pageRenderer = fn; }
+function canRender() { return !!pageRenderer; }
+
+/** HTML brut, ou page rendue (JavaScript exécuté) si la source le demande. */
+async function fetchPage(url, headers = {}, render = false) {
+  if (!render) return fetchHtml(url, headers);
+  if (!pageRenderer) throw new Error('Rendu JavaScript indisponible');
+  return pageRenderer(url, { headers });
+}
+
 function fill(template, vars) {
   return template.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
@@ -124,7 +138,7 @@ async function search(provider, media) {
     type: media.type,
   }).trim();
   const url = fill(s.url, { baseUrl: provider.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
-  const { html, url: finalUrl } = await fetchHtml(url, provider.headers);
+  const { html, url: finalUrl } = await fetchPage(url, provider.headers, provider.render);
   const $ = cheerio.load(html);
   const results = $(s.item).toArray().map((el) => ({
     title: extract($, el, s.title, finalUrl),
@@ -147,7 +161,7 @@ async function episodeUrl(provider, showUrl, season, episode) {
     for (const [k, v] of Object.entries(ep.params)) u.searchParams.set(k, fill(v, vars));
     return u.toString();
   }
-  const { html, url } = await fetchHtml(showUrl, provider.headers);
+  const { html, url } = await fetchPage(showUrl, provider.headers, provider.render);
   const $ = cheerio.load(html);
   for (const el of $(ep.item).toArray()) {
     const sNum = firstInt(extract($, el, ep.season, url));
@@ -164,11 +178,14 @@ async function episodeUrl(provider, showUrl, season, episode) {
 async function playerPage(provider, pageUrl) {
   const sel = provider.player && provider.player.iframe;
   if (!sel) return { url: pageUrl, referer: null };
-  const { html, url } = await fetchHtml(pageUrl, provider.headers);
+  const { html, url } = await fetchPage(pageUrl, provider.headers, provider.render);
   const $ = cheerio.load(html);
   const src = extract($, $.root(), sel, url);
   if (!src) return { url: pageUrl, referer: null }; // iframe injectée en JS : on laisse le navigateur faire
   return { url: src.startsWith('//') ? `https:${src}` : src, referer: url };
 }
 
-module.exports = { extract, normalizeTitle, similarity, pickBest, fill, search, episodeUrl, playerPage, fetchHtml, DEFAULT_UA };
+module.exports = {
+  extract, normalizeTitle, similarity, pickBest, fill, search, episodeUrl, playerPage,
+  fetchHtml, fetchPage, setPageRenderer, canRender, DEFAULT_UA,
+};

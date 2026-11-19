@@ -34,7 +34,7 @@ class CompanionServer private constructor(
 
     @Serializable private data class UrlBody(val url: String)
     @Serializable private data class ToggleBody(val enabled: Boolean)
-    @Serializable private data class AnalyzeBody(val url: String, val headers: Map<String, String> = emptyMap())
+    @Serializable private data class AnalyzeBody(val url: String, val headers: Map<String, String> = emptyMap(), val render: Boolean = false)
     @Serializable private data class TestBody(val provider: SourceProvider, val title: String = "", val year: String? = null, val type: String = "movie")
     @Serializable private data class ErrorBody(val error: String, val details: List<String> = emptyList())
 
@@ -124,7 +124,7 @@ class CompanionServer private constructor(
             m == Method.GET && seg == listOf("builder") -> json(Response.Status.OK, "{\"version\":1}")
             m == Method.POST && seg == listOf("builder", "analyze") -> {
                 val b = decode(AnalyzeBody.serializer(), body(s))
-                val r = runBlocking { runCatching { analyzer.analyzeUrl(b.url, b.headers) } }.orThrowHttp()
+                val r = runBlocking { runCatching { analyzer.analyzeUrl(b.url, b.headers, b.render) } }.orThrowHttp()
                 json(Response.Status.OK, SourcesJson.encodeToString(BuilderAnalyzer.AnalyzeResult.serializer(), r))
             }
             m == Method.POST && seg == listOf("builder", "test") -> {

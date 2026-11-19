@@ -3,6 +3,7 @@ package fr.robinrahoual.rrstreaming
 import android.app.Application
 import fr.robinrahoual.rrstreaming.resolver.MediaUrlInterceptor
 import fr.robinrahoual.rrstreaming.resolver.TmdbSourceResolver
+import fr.robinrahoual.rrstreaming.resolver.WebViewPageRenderer
 import fr.robinrahoual.rrstreaming.sources.SourceRepository
 import fr.robinrahoual.rrstreaming.sources.SourceScraper
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +32,7 @@ class RRStreamingApp : Application() {
 
     val sources: SourceRepository by lazy { SourceRepository(this, http, appScope) }
 
-    val scraper: SourceScraper by lazy { SourceScraper(http) }
+    val scraper: SourceScraper by lazy { SourceScraper(http, WebViewPageRenderer(this)) }
 
     val resolver: TmdbSourceResolver by lazy {
         TmdbSourceResolver(sources, scraper) { config -> MediaUrlInterceptor(this, config) }

@@ -56,6 +56,7 @@ function validateProvider(raw, path = 'provider') {
   if (!Array.isArray(p.types) || !p.types.length || p.types.some((t) => t !== 'movie' && t !== 'tv')) {
     e.push(`${path}.types : valeurs autorisées "movie" et "tv"`);
   }
+  if (p.render != null && typeof p.render !== 'boolean') e.push(`${path}.render : true ou false`);
   if (p.headers && (typeof p.headers !== 'object' || Object.values(p.headers).some((v) => typeof v !== 'string'))) {
     e.push(`${path}.headers : objet de chaînes attendu`);
   }

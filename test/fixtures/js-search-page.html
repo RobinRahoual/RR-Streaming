@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><title>Recherche</title></head><body>
+<header><nav><a href="/">Accueil</a><a href="/films">Films</a></nav></header>
+<main id="app"><div class="spinner">Chargement…</div></main>
+<script>
+  // Résultats construits en JavaScript, comme sur beaucoup de sites récents.
+  setTimeout(function () {
+    var data = [["Dune", "dune-2021", 2021], ["Dune", "dune-1984", 1984], ["Dune : Deuxième partie", "dune-2", 2024]];
+    var html = '<div class="grid">' + data.map(function (d) {
+      return '<a class="result-card" href="/film/' + d[1] + '"><img data-src="/img/' + d[1] + '.jpg" alt=""><h3 class="result-title">' + d[0] + '</h3><span class="result-year">' + d[2] + '</span></a>';
+    }).join('') + '</div>';
+    document.getElementById('app').innerHTML = html;
+  }, 400);
+</script>
+</body></html>

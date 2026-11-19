@@ -1,7 +1,7 @@
 {
   "name": "rr-streaming",
   "productName": "RR Streaming",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "RR Streaming — lecteur multimédia personnel (catalogue TMDB, sources configurables)",
   "author": "Robin Rahoual",
   "license": "UNLICENSED",

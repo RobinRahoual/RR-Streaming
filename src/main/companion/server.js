@@ -88,7 +88,7 @@ class CompanionServer {
       if (is('GET', 'builder')) return sendJson(res, 200, { version: 1 });
       if (is('POST', 'builder', 'analyze')) {
         const b = await body(req);
-        return sendJson(res, 200, await builder.analyzeUrl(b.url, b.headers || {}));
+        return sendJson(res, 200, await builder.analyzeUrl(b.url, b.headers || {}, { render: !!b.render }));
       }
       if (is('POST', 'builder', 'test')) {
         const b = await body(req);

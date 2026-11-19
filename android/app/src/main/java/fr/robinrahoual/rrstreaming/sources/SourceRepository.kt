@@ -38,7 +38,7 @@ class SourceRepository(
         _store.value = withContext(Dispatchers.IO) {
             runCatching {
                 if (!file.baseFile.exists()) SourcesStore()
-                else SourcesJson.decodeFromString<SourcesStore>(file.readFully().decodeToString())
+                else SourcesJson.decodeFromString(SourcesStore.serializer(), file.readFully().decodeToString())
             }.getOrElse {
                 Log.e(TAG, "Store illisible, réinitialisation", it)
                 SourcesStore()
@@ -175,7 +175,7 @@ class SourceRepository(
 
     private fun parseAndValidate(raw: String): SourcesDocument {
         val doc = try {
-            SourcesJson.decodeFromString<SourcesDocument>(raw)
+            SourcesJson.decodeFromString(SourcesDocument.serializer(), raw)
         } catch (e: SerializationException) {
             throw SourceValidationException(listOf("JSON invalide : ${e.message?.lineSequence()?.firstOrNull()}"))
         } catch (e: IllegalArgumentException) {

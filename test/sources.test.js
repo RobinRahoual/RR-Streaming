@@ -273,3 +273,36 @@ test('assistant : analyse et test via l\'API du compagnon', async () => {
     srv.close();
   }
 });
+
+test('assistant : page construite en JavaScript → rendu puis analyse, et recherche avec render', async () => {
+  const rendered = fs.readFileSync(path.join(__dirname, 'fixtures', 'search-page.html'), 'utf8');
+  const { srv, base } = await serve((req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(fs.readFileSync(path.join(__dirname, 'fixtures', 'js-search-page.html')));
+  });
+  const { analyzeUrl } = require('../src/main/sources/builder');
+  try {
+    // Sans moteur de rendu : rien de reconnu, pas d'erreur.
+    const plain = await analyzeUrl(`${base}/recherche?q=dune`);
+    assert.strictEqual(plain.rendered, false);
+    assert.strictEqual(plain.candidates.length, 0);
+
+    // Avec moteur de rendu (simulé) : la page affichée est analysée.
+    const calls = [];
+    scraper.setPageRenderer(async (url) => { calls.push(url); return { html: rendered, url }; });
+    const r = await analyzeUrl(`${base}/recherche?q=dune`);
+    assert.strictEqual(r.rendered, true);
+    assert.strictEqual(r.candidates[0].selectors.item, 'article.movie-card');
+
+    // Une source render:true passe par le moteur de rendu pour la recherche.
+    const provider = { id: 'js', name: 'JS', baseUrl: base, types: ['movie'], render: true, match: { minScore: 0.8, yearTolerance: 1 }, headers: {},
+      search: { url: '{baseUrl}/recherche?q={query}', ...r.candidates[0].selectors } };
+    assert.deepStrictEqual(validateProvider(provider), []);
+    const { best } = await scraper.search(provider, { type: 'movie', title: 'Dune', year: '1984' });
+    assert.ok(best.link.endsWith('/film/dune-1984'));
+    assert.ok(calls.length >= 2);
+  } finally {
+    scraper.setPageRenderer(null);
+    srv.close();
+  }
+});

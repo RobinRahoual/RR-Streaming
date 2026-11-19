@@ -74,6 +74,8 @@ data class SourceProvider(
     val language: String? = null,
     val types: List<MediaKind> = listOf(MediaKind.MOVIE, MediaKind.TV),
     val headers: Map<String, String> = emptyMap(),
+    /** Pages construites en JavaScript : rendu dans une WebView invisible avant lecture des sélecteurs. */
+    val render: Boolean = false,
     val search: SearchSpec,
     val match: MatchSpec = MatchSpec(),
     val episodes: EpisodeSpec? = null,

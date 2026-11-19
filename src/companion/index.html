@@ -403,14 +403,14 @@
         term: "dune", searchUrl: "", template: null,
         analysis: null, choice: 0, manual: null,
         showUrl: "", episodeUrl: "", season: 2, episode: 3, epSpec: null,
-        movieUrl: "", iframes: null, iframeChoice: -1,
+        movieUrl: "", iframes: null, iframeChoice: -1, render: false,
         editingId: null, existing: null,
       };
     }
 
     function fromProvider(p) {
       const w = fresh();
-      w.editingId = p.id; w.existing = p;
+      w.editingId = p.id; w.existing = p; w.render = !!p.render;
       w.name = p.name; w.site = p.baseUrl; w.types = p.types || ["movie", "tv"]; w.language = p.language || ""; w.priority = p.priority ?? 50;
       w.template = p.search.url.replace("{baseUrl}", p.baseUrl.replace(/\/$/, ""));
       w.searchUrl = w.template.replace("{query}", encodeURIComponent(w.term));
@@ -604,6 +604,7 @@
         player: { ...(W.keepPlayer || {}) },
       };
       if (W.language) p.language = W.language;
+      if (W.render) p.render = true;
       if (sel.year) p.search.year = sel.year;
       if (sel.poster) p.search.poster = sel.poster;
       if (W.types.includes("tv")) p.episodes = W.epSpec || W.keepEpisodes || undefined;
@@ -686,6 +687,9 @@
         const draw = () => {
           box.replaceChildren();
           const cands = (W.analysis && W.analysis.candidates) || [];
+          if (cands.length && W.analysis.rendered) {
+            box.append(el("p", { class: "foot", style: { margin: "0 4px 14px" } }, "Ce site construit ses pages en JavaScript : RR Streaming les affichera dans un navigateur invisible (recherche un peu plus lente)."));
+          }
           cands.forEach((c, k) => {
             box.append(el("button", { class: "cand" + (W.choice === k ? " on" : ""), onclick: () => { W.choice = k; draw(); } },
               el("div", { class: "cand-head" }, el("span", {}, `${c.count} résultat${c.count > 1 ? "s" : ""} détecté${c.count > 1 ? "s" : ""}`), el("span", { class: "radio" })),
@@ -699,20 +703,26 @@
           }
           if (!cands.length) {
             box.append(el("div", { class: "detect warn" }, el("b", {}, "Aucune liste trouvée"),
-              "Le site affiche peut-être ses résultats avec JavaScript, ou bloque les visites automatiques. Vous pouvez réessayer avec une autre recherche, ou utiliser le mode avancé (JSON)."));
+              W.analysis && W.analysis.rendered
+                ? "Même une fois la page affichée, aucune liste de résultats n'a été reconnue. Le site bloque peut-être les visites automatiques (vérification anti-robot), ou la recherche n'a rien donné : réessayez avec un autre mot, ou utilisez le mode avancé (JSON)."
+                : "La page n'a pas pu être analysée. Vérifiez l'adresse, ou utilisez le mode avancé (JSON)."));
           }
           btn.disabled = !(cands[W.choice] || (W.choice === -1 && W.manual));
         };
 
         if (!W.analysis) {
-          box.append(el("div", { class: "loading" }, el("div", { class: "spinner" }), "Analyse de la page…"));
+          const msg = el("div", {}, "Analyse de la page…");
+          box.append(el("div", { class: "loading" }, el("div", { class: "spinner" }), msg));
+          const slow = setTimeout(() => { msg.textContent = "Le site semble construit en JavaScript : affichage de la page dans un navigateur invisible…"; }, 3500);
           try {
             W.analysis = await api("POST", "/api/builder/analyze", { url: W.searchUrl });
+            W.render = !!W.analysis.rendered;
             W.choice = W.existing ? -1 : W.analysis.candidates.length ? 0 : -1;
           } catch (e) {
             W.analysis = { candidates: [] };
             toast(errText(e), true);
           }
+          clearTimeout(slow);
         }
         draw();
       },
@@ -785,7 +795,7 @@
           box.replaceChildren(el("div", { class: "loading", style: { padding: "30px 0" } }, el("div", { class: "spinner" }), "Recherche du lecteur…"));
           analyze.disabled = true;
           try {
-            const a = await api("POST", "/api/builder/analyze", { url: W.movieUrl });
+            const a = await api("POST", "/api/builder/analyze", { url: W.movieUrl, render: W.render });
             W.iframes = a.iframes;
             const k = a.iframes.findIndex((f) => f.likely);
             W.iframeChoice = k;
@@ -818,6 +828,7 @@
           row("Résultats", [W.analysis && W.analysis.candidates[W.choice] ? `${W.analysis.candidates[W.choice].count} détectés` : "Configurés", sel.year ? "année" : null, sel.poster ? "affiche" : null].filter(Boolean).join(" · "), jump("results")),
           provider.types.includes("tv") ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate || (provider.episodes.params && Object.keys(provider.episodes.params).length)
             ? episodeExample(provider.episodes) : "Liste d'épisodes") : "—", jump("episodes")) : null,
+          provider.render ? row("Affichage", "Navigateur invisible (JavaScript)") : null,
           row("Lecteur", iframe ? (W.iframes && W.iframes[W.iframeChoice] ? W.iframes[W.iframeChoice].host : "Iframe configurée") : "Détection automatique", jump("player"))));
 
         step.append(el("div", { class: "label-sm" }, "Priorité"));

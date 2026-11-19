@@ -1,6 +1,9 @@
 package fr.robinrahoual.rrstreaming.sources
 
+import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,5 +35,25 @@ class BuilderAnalyzerTest {
         assertEquals(listOf("iframe#player", "iframe.trailer"), r.iframes.map { it.selector.css })
         assertEquals("data-src", r.iframes.first().selector.attr)
         assertEquals("https://lecteur.exemple.net/embed/xyz", r.iframes.first().src)
+    }
+
+    @Test fun `page construite en JavaScript - rendu puis analyse`() = runTest {
+        val server = MockWebServer()
+        repeat(3) { server.enqueue(MockResponse().setBody(fixture("js-search-page.html"))) }
+        server.start()
+        try {
+            val url = server.url("/recherche?q=dune").toString()
+            assertEquals(false, analyzer.analyzeUrl(url).rendered)
+
+            val stub = object : PageRenderer {
+                override suspend fun render(url: String, headers: Map<String, String>) = RenderedPage(fixture("search-page.html"), url)
+            }
+            val withRenderer = BuilderAnalyzer(SourceScraper(OkHttpClient(), stub))
+            val r = withRenderer.analyzeUrl(url)
+            assertEquals(true, r.rendered)
+            assertEquals("article.movie-card", r.candidates.first().selectors.item)
+        } finally {
+            server.shutdown()
+        }
     }
 }

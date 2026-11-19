@@ -8,6 +8,8 @@ const { CompanionServer } = require('./companion/server');
 const { resolveMedia } = require('./resolver/pipeline');
 const { installPlaybackHeaders } = require('./playback-headers');
 const { setupUpdater } = require('./updater');
+const { renderHtml } = require('./resolver/page-renderer');
+const scraper = require('./sources/scraper');
 
 app.setName('RR Streaming');
 if (process.platform === 'win32') app.setAppUserModelId('fr.robinrahoual.rrstreaming');
@@ -24,6 +26,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
+    scraper.setPageRenderer(renderHtml); // sites construits en JavaScript
     const dataDir = app.getPath('userData');
     const settings = new Settings(dataDir);
     const tmdb = new Tmdb(() => settings.get());

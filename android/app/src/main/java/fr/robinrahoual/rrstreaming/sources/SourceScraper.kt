@@ -14,7 +14,13 @@ import java.net.URLEncoder
  * Applique la configuration d'une source (sélecteurs CSS du JSON) : recherche, page d'épisode, iframe du lecteur.
  * Pur Kotlin + OkHttp + Jsoup (aucune dépendance Android) : testable sur la JVM.
  */
-class SourceScraper(private val http: OkHttpClient) {
+class SourceScraper(
+    private val http: OkHttpClient,
+    /** Rendu JavaScript (WebView) pour les sources `render: true` ; null hors Android (tests JVM). */
+    private val renderer: PageRenderer? = null,
+) {
+
+    val canRender: Boolean get() = renderer != null
 
     data class SearchOutcome(val results: List<SearchResult>, val best: ScoredResult?)
     data class PlayerPage(val url: String, val referer: String?)
@@ -32,7 +38,7 @@ class SourceScraper(private val http: OkHttpClient) {
             ),
         ).trim()
         val url = fill(s.url, mapOf("baseUrl" to provider.baseUrl.trimEnd('/'), "query" to encode(query)))
-        val doc = fetch(url, provider.headers)
+        val doc = fetch(url, provider.headers, provider.render)
         val results = doc.select(s.item).mapNotNull { el ->
             val title = extract(el, s.title) ?: return@mapNotNull null
             val link = extract(el, s.link) ?: return@mapNotNull null
@@ -58,7 +64,7 @@ class SourceScraper(private val http: OkHttpClient) {
             val url = base.toHttpUrlOrNull() ?: throw IOException("Adresse de série invalide : $base")
             return url.newBuilder().apply { params.forEach { (k, v) -> setQueryParameter(k, fill(v, vars)) } }.build().toString()
         }
-        val doc = fetch(showUrl, provider.headers)
+        val doc = fetch(showUrl, provider.headers, provider.render)
         for (el in doc.select(ep.item!!)) {
             val s = firstInt(extract(el, ep.season!!))
             val e = firstInt(extract(el, ep.episode!!))
@@ -70,17 +76,26 @@ class SourceScraper(private val http: OkHttpClient) {
     /** Si la source définit player.iframe, renvoie l'URL de l'iframe du lecteur (sinon la page elle-même). */
     suspend fun playerPage(provider: SourceProvider, pageUrl: String): PlayerPage {
         val sel = provider.player.iframe ?: return PlayerPage(pageUrl, null)
-        val doc = fetch(pageUrl, provider.headers)
+        val doc = fetch(pageUrl, provider.headers, provider.render)
         val src = extract(doc, sel) ?: return PlayerPage(pageUrl, null) // iframe injectée en JS : la WebView s'en charge
         return PlayerPage(if (src.startsWith("//")) "https:$src" else src, doc.location())
     }
 
     /** Télécharge et parse une page (utilisé par l'assistant de création). */
-    suspend fun fetchDocument(url: String, headers: Map<String, String> = emptyMap()) = fetch(url, headers)
+    suspend fun fetchDocument(url: String, headers: Map<String, String> = emptyMap(), render: Boolean = false) = fetch(url, headers, render)
 
     // ------------------------------------------------------------------ Interne
 
-    private suspend fun fetch(url: String, headers: Map<String, String>) = withContext(Dispatchers.IO) {
+    private suspend fun fetch(url: String, headers: Map<String, String>, render: Boolean = false): org.jsoup.nodes.Document {
+        if (render) {
+            val r = renderer ?: throw IOException("Rendu JavaScript indisponible")
+            val page = r.render(url, headers)
+            return Jsoup.parse(page.html, page.url)
+        }
+        return fetchStatic(url, headers)
+    }
+
+    private suspend fun fetchStatic(url: String, headers: Map<String, String>) = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url)
             .header("User-Agent", DEFAULT_UA)
             .header("Accept", "text/html,application/xhtml+xml")

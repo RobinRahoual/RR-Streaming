@@ -25,16 +25,31 @@ class BuilderAnalyzer(private val scraper: SourceScraper) {
     @Serializable data class Sample(val title: String, val link: String, val year: String? = null, val poster: String? = null)
     @Serializable data class Candidate(val selectors: ResultSelectors, val count: Int, val samples: List<Sample>)
     @Serializable data class IframeInfo(val selector: Selector, val src: String, val host: String, val likely: Boolean, val trailer: Boolean)
-    @Serializable data class AnalyzeResult(val url: String, val pageTitle: String?, val candidates: List<Candidate>, val iframes: List<IframeInfo>)
+    @Serializable data class AnalyzeResult(
+        val url: String,
+        val pageTitle: String?,
+        val candidates: List<Candidate>,
+        val iframes: List<IframeInfo>,
+        /** true : la page a dû être rendue avec JavaScript ; la source devra utiliser `render: true`. */
+        val rendered: Boolean = false,
+    )
 
     @Serializable data class BestMatch(val title: String, val link: String, val year: String? = null, val score: Double)
     @Serializable data class TestResult(val results: List<Sample>, val best: BestMatch?)
 
-    suspend fun analyzeUrl(raw: String, headers: Map<String, String> = emptyMap()): AnalyzeResult {
+    /**
+     * Analyse une page. Si le HTML brut ne donne rien (site construit en JavaScript, ou visite
+     * automatique refusée), la page est rendue dans une WebView invisible puis réanalysée.
+     */
+    suspend fun analyzeUrl(raw: String, headers: Map<String, String> = emptyMap(), render: Boolean = false): AnalyzeResult {
         val url = raw.trim().let { if ("://" in it) it else "https://$it" }
         require(url.toHttpUrlOrNull() != null) { "Adresse invalide" }
-        val doc = scraper.fetchDocument(url, headers)
-        return analyze(doc)
+        if (!render) {
+            val static = runCatching { analyze(scraper.fetchDocument(url, headers)) }
+            val useful = static.getOrNull()?.let { it.candidates.isNotEmpty() || it.iframes.isNotEmpty() } == true
+            if (useful || !scraper.canRender) return static.getOrThrow()
+        }
+        return analyze(scraper.fetchDocument(url, headers, render = true)).copy(rendered = true)
     }
 
     fun analyze(html: String, pageUrl: String): AnalyzeResult = analyze(Jsoup.parse(html, pageUrl))
@@ -159,7 +174,8 @@ class BuilderAnalyzer(private val scraper: SourceScraper) {
             val classes = goodClasses(members.first()).joinToString(" ")
             val uniqueLinks = results.map { it.link }.toSet().size.toDouble() / results.size
             val avgTitle = results.sumOf { it.title.length }.toDouble() / results.size
-            val inNav = members.first().parents().any { runCatching { it.`is`(NAV_ANCESTORS) }.getOrDefault(false) }
+            // Les résultats ne sont jamais dans l'en-tête, le menu ou le pied de page.
+            if (members.first().parents().any { runCatching { it.`is`(NAV_ANCESTORS) }.getOrDefault(false) }) continue
             val score = minOf(results.size, 30) * uniqueLinks *
                 (if (withPoster) 1.6 else 1.0) *
                 (if (proto.fromHeading) 1.3 else 1.0) *
@@ -167,8 +183,7 @@ class BuilderAnalyzer(private val scraper: SourceScraper) {
                 (if (classes.isNotEmpty()) 1.1 else 1.0) *
                 (if (members.first().tagName() in setOf("article", "li") || SEMANTIC.containsMatchIn(classes)) 1.25 else 1.0) *
                 (if (GRID.containsMatchIn(classes)) 0.85 else 1.0) *
-                (if (avgTitle < 4) 0.3 else 1.0) *
-                (if (inNav) 0.15 else 1.0)
+                (if (avgTitle < 4) 0.3 else 1.0)
             scored += Scored(Candidate(selectors, results.size, results.take(5)), score, results.take(5).joinToString("|") { it.link })
         }
 
