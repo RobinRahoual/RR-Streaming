@@ -48,6 +48,8 @@ data class MatchSpec(val minScore: Double = 0.8, val yearTolerance: Int = 1)
 @Serializable
 data class EpisodeSpec(
     val urlTemplate: String? = null,
+    /** Paramètres d'adresse posés sur la page de la série (ou sur urlTemplate), ex. { "s": "{season}", "ep": "{episode}" }. */
+    val params: Map<String, String>? = null,
     val item: String? = null,
     val season: Selector? = null,
     val episode: Selector? = null,

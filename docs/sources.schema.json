@@ -75,9 +75,14 @@
         "episodes": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Requis si types contient \"tv\". Soit urlTemplate, soit item + season + episode + link (parsing de la page de la série).",
+          "description": "Requis si types contient \"tv\". urlTemplate et/ou params, ou item + season + episode + link (parsing de la page de la série).",
           "properties": {
             "urlTemplate": { "type": "string", "description": "Variables : {link}, {season}, {episode}, {season2}, {episode2} (sur 2 chiffres)." },
+            "params": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Paramètres d'adresse ajoutés ou remplacés sur la page de la série (ou sur urlTemplate). Ex. : { \"s\": \"{season}\", \"ep\": \"{episode}\" }."
+            },
             "item": { "type": "string" },
             "season": { "$ref": "#/$defs/selector" },
             "episode": { "$ref": "#/$defs/selector" },

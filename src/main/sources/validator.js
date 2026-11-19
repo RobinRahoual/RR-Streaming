@@ -78,12 +78,20 @@ function validateProvider(raw, path = 'provider') {
   if (Array.isArray(p.types) && p.types.includes('tv')) {
     const ep = raw.episodes;
     if (!ep) e.push(`${path}.episodes : requis pour les séries (types contient "tv")`);
-    else if (ep.urlTemplate != null) {
-      if (typeof ep.urlTemplate !== 'string' || !/\{season2?\}/.test(ep.urlTemplate) || !/\{episode2?\}/.test(ep.urlTemplate)) {
-        e.push(`${path}.episodes.urlTemplate : doit contenir {season} et {episode}`);
+    else if (ep.urlTemplate != null || ep.params != null) {
+      if (ep.urlTemplate != null && typeof ep.urlTemplate !== 'string') e.push(`${path}.episodes.urlTemplate : chaîne attendue`);
+      const params = ep.params || {};
+      if (typeof params !== 'object' || Array.isArray(params) || Object.values(params).some((v) => typeof v !== 'string')) {
+        e.push(`${path}.episodes.params : objet de chaînes attendu`);
+      } else {
+        // {season} et {episode} peuvent être dans l'adresse ou dans les paramètres
+        const all = [ep.urlTemplate || '', ...Object.values(params)].join(' ');
+        if (!/\{season2?\}/.test(all) || !/\{episode2?\}/.test(all)) {
+          e.push(`${path}.episodes : {season} et {episode} doivent apparaître dans urlTemplate ou params`);
+        }
       }
     } else if (!ep.item || !ep.season || !ep.episode || !ep.link) {
-      e.push(`${path}.episodes : urlTemplate ou (item + season + episode + link) requis`);
+      e.push(`${path}.episodes : urlTemplate, params ou (item + season + episode + link) requis`);
     } else {
       css(e, ep.item, `${path}.episodes.item`);
       selector(e, ep.season, `${path}.episodes.season`, true);

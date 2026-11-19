@@ -47,13 +47,15 @@ object SourceValidator {
             val ep = p.episodes
             when {
                 ep == null -> e += "$path.episodes : requis pour les séries (types contient \"tv\")"
-                ep.urlTemplate != null -> {
-                    if ("{season" !in ep.urlTemplate || "{episode" !in ep.urlTemplate) {
-                        e += "$path.episodes.urlTemplate : doit contenir {season} et {episode}"
+                ep.urlTemplate != null || !ep.params.isNullOrEmpty() -> {
+                    // {season} et {episode} peuvent être dans l'adresse ou dans les paramètres
+                    val all = listOfNotNull(ep.urlTemplate).plus(ep.params.orEmpty().values).joinToString(" ")
+                    if ("{season" !in all || "{episode" !in all) {
+                        e += "$path.episodes : {season} et {episode} doivent apparaître dans urlTemplate ou params"
                     }
                 }
                 ep.item == null || ep.season == null || ep.episode == null || ep.link == null ->
-                    e += "$path.episodes : urlTemplate ou (item + season + episode + link) requis"
+                    e += "$path.episodes : urlTemplate, params ou (item + season + episode + link) requis"
                 else -> {
                     e.css(ep.item, "$path.episodes.item")
                     e.selector(ep.season, "$path.episodes.season")

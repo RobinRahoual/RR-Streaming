@@ -93,6 +93,9 @@ test('search + episodeUrl de bout en bout sur un faux site', async () => {
     assert.strictEqual(best.link, `${base}/serie/the-office`);
     const ep = await scraper.episodeUrl(p, best.link, 2, 3);
     assert.strictEqual(ep, `${base}/serie/the-office/saison-2/episode-3`);
+    const byParams = { ...p, episodes: { params: { s: '{season}', ep: '{episode}' } } };
+    assert.strictEqual(await scraper.episodeUrl(byParams, `${base}/anime/jjk?s=1&ep=&lang=vo&anime_id=42765`, 2, 6), `${base}/anime/jjk?s=2&ep=6&lang=vo&anime_id=42765`);
+    assert.deepStrictEqual(validateProvider(byParams), []);
     const parsed = { ...p, episodes: { item: 'li.ep', season: { css: '.s' }, episode: { css: '.e' }, link: { css: 'a', attr: 'href' } } };
     assert.strictEqual(await scraper.episodeUrl(parsed, `${base}/serie/page`, 2, 3), `${base}/ep/2-3`);
   } finally {

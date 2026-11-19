@@ -2,6 +2,7 @@ package fr.robinrahoual.rrstreaming.sources
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -44,15 +45,18 @@ class SourceScraper(private val http: OkHttpClient) {
     suspend fun episodeUrl(provider: SourceProvider, showUrl: String, season: Int, episode: Int): String {
         val ep = provider.episodes ?: throw IOException("Cette source ne gère pas les séries")
         val pad = { n: Int -> n.toString().padStart(2, '0') }
-        ep.urlTemplate?.let {
-            return fill(
-                it,
-                mapOf(
-                    "link" to showUrl.trimEnd('/'),
-                    "season" to season.toString(), "episode" to episode.toString(),
-                    "season2" to pad(season), "episode2" to pad(episode),
-                ),
-            )
+        val vars = mapOf(
+            "link" to showUrl.trimEnd('/'),
+            "season" to season.toString(), "episode" to episode.toString(),
+            "season2" to pad(season), "episode2" to pad(episode),
+        )
+        if (ep.urlTemplate != null || !ep.params.isNullOrEmpty()) {
+            val base = ep.urlTemplate?.let { fill(it, vars) } ?: showUrl
+            val params = ep.params.orEmpty()
+            if (params.isEmpty()) return base
+            // Saison / épisode passés en paramètres d'adresse : ?s={season}&ep={episode}
+            val url = base.toHttpUrlOrNull() ?: throw IOException("Adresse de série invalide : $base")
+            return url.newBuilder().apply { params.forEach { (k, v) -> setQueryParameter(k, fill(v, vars)) } }.build().toString()
         }
         val doc = fetch(showUrl, provider.headers)
         for (el in doc.select(ep.item!!)) {

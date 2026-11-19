@@ -138,10 +138,14 @@ async function search(provider, media) {
 async function episodeUrl(provider, showUrl, season, episode) {
   const ep = provider.episodes;
   const pad = (n) => String(n).padStart(2, '0');
-  if (ep.urlTemplate) {
-    return fill(ep.urlTemplate, {
-      link: showUrl.replace(/\/$/, ''), season, episode, season2: pad(season), episode2: pad(episode),
-    });
+  const vars = { link: showUrl.replace(/\/$/, ''), season, episode, season2: pad(season), episode2: pad(episode) };
+  if (ep.urlTemplate || ep.params) {
+    const base = ep.urlTemplate ? fill(ep.urlTemplate, vars) : showUrl;
+    if (!ep.params) return base;
+    // Saison / épisode passés en paramètres d'adresse : ?s={season}&ep={episode}
+    const u = new URL(base);
+    for (const [k, v] of Object.entries(ep.params)) u.searchParams.set(k, fill(v, vars));
+    return u.toString();
   }
   const { html, url } = await fetchHtml(showUrl, provider.headers);
   const $ = cheerio.load(html);

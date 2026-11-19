@@ -80,6 +80,13 @@ class SourceScraperTest {
         )
     }
 
+    @Test fun `episode par parametres d'adresse`() = runTest {
+        val p = provider(EpisodeSpec(params = mapOf("s" to "{season}", "ep" to "{episode}")))
+        val show = server.url("/anime/jjk?s=1&ep=&lang=vo&anime_id=42765").toString()
+        assertEquals(server.url("/anime/jjk?s=2&ep=6&lang=vo&anime_id=42765").toString(), scraper.episodeUrl(p, show, 2, 6))
+        assertTrue(SourceValidator.validateProvider(p).isEmpty())
+    }
+
     @Test fun `episode par analyse de la page`() = runTest {
         val p = provider(EpisodeSpec(item = "li.ep", season = Selector(".s"), episode = Selector(".e"), link = Selector("a", "href")))
         val url = scraper.episodeUrl(p, server.url("/serie/the-office").toString(), 2, 3)

@@ -402,7 +402,7 @@
         name: "", site: "", types: ["movie", "tv"], language: "fr", priority: 50,
         term: "dune", searchUrl: "", template: null,
         analysis: null, choice: 0, manual: null,
-        showUrl: "", episodeUrl: "", season: 2, episode: 3, epTemplate: null,
+        showUrl: "", episodeUrl: "", season: 2, episode: 3, epSpec: null,
         movieUrl: "", iframes: null, iframeChoice: -1,
         editingId: null, existing: null,
       };
@@ -416,8 +416,10 @@
       w.searchUrl = w.template.replace("{query}", encodeURIComponent(w.term));
       w.choice = -1;
       w.manual = { item: p.search.item, title: p.search.title, link: p.search.link, year: p.search.year, poster: p.search.poster };
-      w.epTemplate = p.episodes && p.episodes.urlTemplate || null;
-      w.keepEpisodes = p.episodes && !p.episodes.urlTemplate ? p.episodes : null;
+      const ep = p.episodes || null;
+      const hasParams = !!(ep && ep.params && Object.keys(ep.params).length);
+      w.epSpec = ep && (ep.urlTemplate || hasParams) ? { ...(ep.urlTemplate ? { urlTemplate: ep.urlTemplate } : {}), ...(hasParams ? { params: ep.params } : {}) } : null;
+      w.keepEpisodes = ep && !w.epSpec ? ep : null;
       w.keepIframe = p.player && p.player.iframe || null;
       w.keepPlayer = p.player || {};
       return w;
@@ -503,24 +505,75 @@
       return null;
     }
 
+    /**
+     * Déduit comment construire l'adresse d'un épisode à partir de celle de la série.
+     * Deux formes reconnues (combinables) :
+     *  - chemin : …/serie/x  →  …/serie/x/saison-2/episode-3   ⇒ urlTemplate "{link}/saison-{season}/episode-{episode}"
+     *  - paramètres : …/x?s=1&ep=  →  …/x?s=1&ep=6            ⇒ params { s: "{season}", ep: "{episode}" }
+     * Renvoie { spec } ou { error }.
+     */
     function deriveEpisodeTemplate(showUrl, epUrl, season, episode) {
-      const show = String(showUrl || "").trim().replace(/\/+$/, "");
-      const ep = String(epUrl || "").trim();
-      if (!show || !ep) return { error: null };
-      if (!ep.startsWith(show)) return { error: "L'adresse de l'épisode doit commencer par celle de la série. Vérifiez que vous avez ouvert un épisode de cette série." };
-      const rest = ep.slice(show.length);
-      let seasonDone = false, episodeDone = false;
-      const out = rest.replace(/\d+/g, (tok) => {
-        const n = Number(tok);
-        const padded = tok.length === 2 && tok.startsWith("0");
-        if (!seasonDone && n === Number(season)) { seasonDone = true; return padded ? "{season2}" : "{season}"; }
-        if (seasonDone && !episodeDone && n === Number(episode)) { episodeDone = true; return padded ? "{episode2}" : "{episode}"; }
-        return tok;
-      });
-      if (!seasonDone || !episodeDone) {
-        return { error: `Impossible de retrouver la saison ${season} et l'épisode ${episode} dans l'adresse. Vérifiez les numéros ci-dessus.` };
+      const a = String(showUrl || "").trim(), b = String(epUrl || "").trim();
+      if (!a || !b) return { error: null };
+      let S, E;
+      try { S = new URL(a); E = new URL(b); } catch { return { error: "L'une des deux adresses n'est pas valide." }; }
+      if (S.origin !== E.origin) return { error: "Les deux adresses doivent venir du même site." };
+
+      const sPath = S.pathname.replace(/\/+$/, ""), ePath = E.pathname.replace(/\/+$/, "");
+      if (ePath !== sPath && !ePath.startsWith(sPath)) {
+        return { error: "L'adresse de l'épisode ne prolonge pas celle de la série. Vérifiez que vous avez ouvert un épisode de cette même série." };
       }
-      return { template: "{link}" + out };
+      const token = (kind, raw) => (raw.length === 2 && raw.startsWith("0") ? `{${kind}2}` : `{${kind}}`);
+      const isNum = (v, n) => /^\d+$/.test(v) && Number(v) === Number(n);
+      let seasonDone = false, episodeDone = false;
+
+      // 1. Paramètres d'adresse : d'abord par le nom (s, saison, ep, episode…), puis par la valeur.
+      const params = {};
+      const entries = [...E.searchParams.entries()];
+      for (const [k, v] of entries) {
+        if (!seasonDone && /^(s|sa|saison|season|sea|ss)$/i.test(k) && isNum(v, season)) { params[k] = token("season", v); seasonDone = true; }
+        else if (!episodeDone && /^(e|ep|eps|epi|episode|episodio|ep_?num)$/i.test(k) && isNum(v, episode)) { params[k] = token("episode", v); episodeDone = true; }
+      }
+      for (const [k, v] of entries) {
+        if (k in params) continue;
+        if (!seasonDone && Number(season) !== Number(episode) && isNum(v, season)) { params[k] = token("season", v); seasonDone = true; }
+        else if (!episodeDone && Number(season) !== Number(episode) && isNum(v, episode)) { params[k] = token("episode", v); episodeDone = true; }
+      }
+
+      // 2. Suite du chemin.
+      let rest = ePath.slice(sPath.length);
+      if (rest) {
+        rest = rest.replace(/\d+/g, (tok) => {
+          if (!seasonDone && isNum(tok, season)) { seasonDone = true; return token("season", tok); }
+          if (seasonDone && !episodeDone && isNum(tok, episode)) { episodeDone = true; return token("episode", tok); }
+          return tok;
+        });
+        if (S.search) return { error: "Cette forme d'adresse n'est pas prise en charge par l'assistant : utilisez le mode avancé (JSON)." };
+      }
+
+      if (!seasonDone || !episodeDone) {
+        const missing = [!seasonDone ? `la saison ${season}` : null, !episodeDone ? `l'épisode ${episode}` : null].filter(Boolean).join(" et ");
+        return { error: `Impossible de retrouver ${missing} dans l'adresse de l'épisode. Vérifiez les numéros ci-dessus.` };
+      }
+      const spec = {};
+      if (rest) spec.urlTemplate = "{link}" + rest;
+      if (Object.keys(params).length) spec.params = params;
+      return { spec };
+    }
+
+    function renderEpisodeSpec(spec) {
+      const nodes = spec.urlTemplate ? renderTemplate(spec.urlTemplate) : [el("span", { class: "tok" }, "série")];
+      if (spec.params) {
+        Object.entries(spec.params).forEach(([k, v], i) => nodes.push(i ? "&" : "?", `${k}=`, ...renderTemplate(v)));
+      }
+      return nodes;
+    }
+
+    function episodeExample(spec) {
+      const ex = (t) => t.replace("{link}", "…").replace("{season2}", "02").replace("{season}", "2").replace("{episode2}", "03").replace("{episode}", "3");
+      let out = spec.urlTemplate ? ex(spec.urlTemplate) : "…";
+      if (spec.params) out += "?" + Object.entries(spec.params).map(([k, v]) => `${k}=${ex(v)}`).join("&");
+      return out;
     }
 
     const TOKENS = { "{query}": "titre recherché", "{link}": "série", "{season}": "saison", "{season2}": "saison", "{episode}": "épisode", "{episode2}": "épisode" };
@@ -553,7 +606,7 @@
       if (W.language) p.language = W.language;
       if (sel.year) p.search.year = sel.year;
       if (sel.poster) p.search.poster = sel.poster;
-      if (W.types.includes("tv")) p.episodes = W.epTemplate ? { urlTemplate: W.epTemplate } : W.keepEpisodes || undefined;
+      if (W.types.includes("tv")) p.episodes = W.epSpec || W.keepEpisodes || undefined;
       const iframe = W.iframes && W.iframeChoice >= 0 ? W.iframes[W.iframeChoice].selector : (W.iframes ? null : W.keepIframe);
       if (iframe) p.player.iframe = iframe; else delete p.player.iframe;
       return p;
@@ -667,7 +720,7 @@
       episodes(step) {
         head(step, "Étape 4", "Et pour les séries\u00a0?", "Pour trouver un épisode, RR Streaming a besoin d'un exemple d'adresse.");
         const showField = inputField("1. Adresse d'une série sur le site", { type: "url", value: W.showUrl, placeholder: "https://…/serie/…", inputmode: "url" }, (v) => { W.showUrl = v; update(); });
-        const epField = inputField("2. Adresse d'un de ses épisodes", { type: "url", value: W.episodeUrl, placeholder: "https://…/serie/…/saison-2/episode-3", inputmode: "url" }, (v) => { W.episodeUrl = v; update(); });
+        const epField = inputField("2. Adresse d'un de ses épisodes", { type: "url", value: W.episodeUrl, placeholder: "https://…/serie/…/saison-2/episode-3 ou …?s=2&ep=3", inputmode: "url" }, (v) => { W.episodeUrl = v; update(); });
         step.append(el("div", { class: "group" }, showField.node, epField.node));
 
         const stepper = (label, key) => {
@@ -682,20 +735,20 @@
         step.append(out);
 
         const btn = footer("Continuer", () => go(1), {
-          secondary: el("button", { class: "btn ghost", onclick: () => { W.types = ["movie"]; W.epTemplate = null; index = steps().indexOf("player"); goingBack = false; show(); } }, "Ce site n'a pas de séries"),
+          secondary: el("button", { class: "btn ghost", onclick: () => { W.types = ["movie"]; W.epSpec = null; index = steps().indexOf("player"); goingBack = false; show(); } }, "Ce site n'a pas de séries"),
         });
         function update() {
           const r = deriveEpisodeTemplate(W.showUrl, W.episodeUrl, W.season, W.episode);
-          W.epTemplate = r.template || (W.showUrl || W.episodeUrl ? null : W.epTemplate);
+          W.epSpec = r.spec || (W.showUrl || W.episodeUrl ? null : W.epSpec);
           out.replaceChildren();
-          if (r.template) {
-            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle d'épisode détecté"), renderTemplate(r.template)));
+          if (r.spec) {
+            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle d'épisode détecté"), renderEpisodeSpec(r.spec)));
           } else if (r.error) {
             out.append(el("div", { class: "detect warn" }, el("b", {}, "À vérifier"), r.error));
-          } else if (W.epTemplate) {
-            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle actuel"), renderTemplate(W.epTemplate)));
+          } else if (W.epSpec) {
+            out.append(el("div", { class: "detect ok" }, el("b", {}, "Modèle actuel"), renderEpisodeSpec(W.epSpec)));
           }
-          btn.disabled = !(W.epTemplate || W.keepEpisodes);
+          btn.disabled = !(W.epSpec || W.keepEpisodes);
         }
         update();
       },
@@ -763,9 +816,8 @@
           row("Contenus", provider.types.map((t) => (t === "movie" ? "Films" : "Séries")).join(" · "), jump("site")),
           row("Recherche", sel.url.replace("{baseUrl}", "").replace("{query}", "…"), jump("search")),
           row("Résultats", [W.analysis && W.analysis.candidates[W.choice] ? `${W.analysis.candidates[W.choice].count} détectés` : "Configurés", sel.year ? "année" : null, sel.poster ? "affiche" : null].filter(Boolean).join(" · "), jump("results")),
-          provider.types.includes("tv") ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate
-            ? provider.episodes.urlTemplate.replace("{link}", "…").replace("{season2}", "02").replace("{season}", "2").replace("{episode2}", "03").replace("{episode}", "3")
-            : "Liste d'épisodes") : "—", jump("episodes")) : null,
+          provider.types.includes("tv") ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate || (provider.episodes.params && Object.keys(provider.episodes.params).length)
+            ? episodeExample(provider.episodes) : "Liste d'épisodes") : "—", jump("episodes")) : null,
           row("Lecteur", iframe ? (W.iframes && W.iframes[W.iframeChoice] ? W.iframes[W.iframeChoice].host : "Iframe configurée") : "Détection automatique", jump("player"))));
 
         step.append(el("div", { class: "label-sm" }, "Priorité"));
