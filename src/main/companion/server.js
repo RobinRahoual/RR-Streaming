@@ -90,6 +90,10 @@ class CompanionServer {
         const b = await body(req);
         return sendJson(res, 200, await builder.analyzeUrl(b.url, b.headers || {}, { render: !!b.render }));
       }
+      if (is('POST', 'builder', 'episodes')) {
+        const b = await body(req);
+        return sendJson(res, 200, await builder.analyzeEpisodes(b));
+      }
       if (is('POST', 'builder', 'test')) {
         const b = await body(req);
         return sendJson(res, 200, await builder.testProvider(b.provider, b));

@@ -54,13 +54,14 @@ object SourceValidator {
                         e += "$path.episodes : {season} et {episode} doivent apparaître dans urlTemplate ou params"
                     }
                 }
-                ep.item == null || ep.season == null || ep.episode == null || ep.link == null ->
-                    e += "$path.episodes : urlTemplate, params ou (item + season + episode + link) requis"
+                ep.item == null || ep.episode == null || ep.link == null ->
+                    e += "$path.episodes : urlTemplate, params ou (item + episode + link) requis"
                 else -> {
                     e.css(ep.item, "$path.episodes.item")
-                    e.selector(ep.season, "$path.episodes.season")
+                    ep.season?.let { e.selector(it, "$path.episodes.season") }
                     e.selector(ep.episode, "$path.episodes.episode")
                     e.selector(ep.link, "$path.episodes.link")
+                    if (ep.pageTemplate != null && "{season" !in ep.pageTemplate) e += "$path.episodes.pageTemplate : doit contenir {season}"
                 }
             }
         }

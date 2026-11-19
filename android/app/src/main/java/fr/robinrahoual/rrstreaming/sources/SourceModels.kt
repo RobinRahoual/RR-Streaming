@@ -50,10 +50,16 @@ data class EpisodeSpec(
     val urlTemplate: String? = null,
     /** Paramètres d'adresse posés sur la page de la série (ou sur urlTemplate), ex. { "s": "{season}", "ep": "{episode}" }. */
     val params: Map<String, String>? = null,
+    /** Mode liste : élément d'un épisode sur la page de la série (adresses non prévisibles, ex. /episode/48213). */
     val item: String? = null,
+    /** Facultatif : numéro de saison dans l'élément (page listant plusieurs saisons). */
     val season: Selector? = null,
     val episode: Selector? = null,
     val link: Selector? = null,
+    /** Facultatif : page à charger pour une saison ({link}, {season}, {season2}). */
+    val pageTemplate: String? = null,
+    /** Facultatif : paramètres posés sur la page de la série pour choisir la saison, ex. { "season": "{season}" }. */
+    val pageParams: Map<String, String>? = null,
 )
 
 @Serializable

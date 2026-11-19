@@ -35,6 +35,10 @@ class CompanionServer private constructor(
     @Serializable private data class UrlBody(val url: String)
     @Serializable private data class ToggleBody(val enabled: Boolean)
     @Serializable private data class AnalyzeBody(val url: String, val headers: Map<String, String> = emptyMap(), val render: Boolean = false)
+    @Serializable private data class EpisodesBody(
+        val showUrl: String, val episodeUrl: String, val season: Int, val episode: Int,
+        val headers: Map<String, String> = emptyMap(), val render: Boolean = false,
+    )
     @Serializable private data class TestBody(val provider: SourceProvider, val title: String = "", val year: String? = null, val type: String = "movie")
     @Serializable private data class ErrorBody(val error: String, val details: List<String> = emptyList())
 
@@ -126,6 +130,11 @@ class CompanionServer private constructor(
                 val b = decode(AnalyzeBody.serializer(), body(s))
                 val r = runBlocking { runCatching { analyzer.analyzeUrl(b.url, b.headers, b.render) } }.orThrowHttp()
                 json(Response.Status.OK, SourcesJson.encodeToString(BuilderAnalyzer.AnalyzeResult.serializer(), r))
+            }
+            m == Method.POST && seg == listOf("builder", "episodes") -> {
+                val b = decode(EpisodesBody.serializer(), body(s))
+                val r = runBlocking { runCatching { analyzer.analyzeEpisodes(b.showUrl.trim(), b.episodeUrl.trim(), b.season, b.episode, b.headers, b.render) } }.orThrowHttp()
+                json(Response.Status.OK, SourcesJson.encodeToString(BuilderAnalyzer.EpisodesResult.serializer(), r))
             }
             m == Method.POST && seg == listOf("builder", "test") -> {
                 val b = decode(TestBody.serializer(), body(s))

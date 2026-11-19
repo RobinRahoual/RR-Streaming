@@ -245,6 +245,156 @@ async function analyzeUrl(url, headers = {}, { render = false } = {}) {
   return { ...analyzeHtml(html, finalUrl), rendered: true };
 }
 
+
+// ------------------------------------------------------------ Liste d'épisodes (adresses non prévisibles)
+
+function sameUrl(a, b) {
+  const norm = (u) => {
+    try {
+      const x = new URL(u);
+      x.hash = '';
+      return `${x.hostname.replace(/^www\./, '')}${x.pathname.replace(/\/+$/, '')}${x.search}`.toLowerCase();
+    } catch { return String(u).toLowerCase(); }
+  };
+  return norm(a) === norm(b);
+}
+
+/** Expression régulière qui extrait le k-ième nombre d'un texte (0 = premier). */
+function nthNumberRegex(k) {
+  return k === 0 ? '(\\d+)' : `^(?:\\D*\\d+){${k}}\\D*?(\\d+)`;
+}
+
+/**
+ * Cherche dans l'élément le texte qui contient `value` et renvoie un sélecteur { css, attr, regex }
+ * qui l'extrait. `avoid` : { node, index } déjà utilisé (pour ne pas confondre saison et épisode).
+ */
+function numberSelector($, item, value, avoid = null) {
+  const nodes = [item, ...$(item).find('*').toArray()];
+  const options = [];
+  for (const n of nodes) {
+    if (SKIP_TAGS.has(n.tagName)) continue;
+    const text = $(n).text().replace(/\s+/g, ' ').trim();
+    if (!text || (n !== item && text.length > 80)) continue;
+    const nums = text.match(/\d+/g) || [];
+    nums.forEach((x, k) => {
+      if (Number(x) !== Number(value)) return;
+      if (avoid && avoid.text === text && avoid.index === k) return;
+      let css = '';
+      if (n !== item) {
+        css = signature(n);
+        if ($(item).find(css).first()[0] !== n) css = n.tagName;
+        if ($(item).find(css).first()[0] !== n) return;
+      }
+      options.push({ selector: { css, attr: 'text', regex: nthNumberRegex(k) }, text, index: k, len: text.length, classed: n !== item && goodClasses(n).length > 0 });
+    });
+  }
+  // Attributs (data-episode="6"…)
+  for (const n of nodes) {
+    for (const [name, v] of Object.entries(n.attribs || {})) {
+      if (/^data-/.test(name) && String(v).trim() === String(value) && !(avoid && avoid.attr === name)) {
+        const css = n === item ? '' : signature(n);
+        if (n === item || $(item).find(css).first()[0] === n) options.push({ selector: { css, attr: name }, attr: name, len: 0, classed: true });
+      }
+    }
+  }
+  options.sort((a, b) => Number(b.classed) - Number(a.classed) || a.len - b.len);
+  return options[0] || null;
+}
+
+function seasonParamsFrom(showUrl, season) {
+  try {
+    const u = new URL(showUrl);
+    for (const [k, v] of u.searchParams) {
+      if (/^(s|sa|saison|season|sea|ss)$/i.test(k) && /^\d+$/.test(v) && Number(v) === Number(season)) return { [k]: '{season}' };
+    }
+  } catch { /* adresse déjà vérifiée */ }
+  return null;
+}
+
+/**
+ * Assistant, étape « séries » quand l'adresse d'un épisode n'est pas déductible de celle de la série
+ * (ex. /episode/48213) : repère l'épisode d'exemple sur la page de la série, en déduit la liste
+ * d'épisodes et les sélecteurs (élément, numéro d'épisode, lien, saison si nécessaire).
+ */
+function analyzeEpisodesHtml(html, pageUrl, { showUrl, episodeUrl, season, episode }) {
+  const $ = cheerio.load(html);
+  const anchor = $('a[href]').toArray().find((a) => {
+    const abs = absolute($(a).attr('href'), pageUrl);
+    return abs && sameUrl(abs, episodeUrl);
+  });
+  if (!anchor) {
+    const err = new Error("L'épisode d'exemple n'apparaît pas sur la page de la série. Vérifiez les deux adresses, ou ouvrez la page de la série qui liste ses épisodes.");
+    err.code = 'EPISODE_NOT_FOUND';
+    throw err;
+  }
+
+  // Élément répété qui contient le lien de l'épisode.
+  let item = null;
+  let siblings = [];
+  for (let n = anchor; n && n.type === 'tag' && n.tagName !== 'body'; n = n.parent) {
+    if (!n.parent || n.parent.type !== 'tag') break;
+    const sig = signature(n);
+    siblings = $(n.parent).children().toArray().filter((c) => signature(c) === sig && (c.tagName === 'a' || $(c).find('a[href]').length));
+    if (siblings.length >= 2) { item = n; break; }
+  }
+  if (!item) throw new Error("La page de la série ne présente pas de liste d'épisodes reconnaissable. Utilisez le mode avancé (JSON).");
+
+  const own = signature(item);
+  const key = `${signature(item.parent)} > ${own}`;
+  const itemSel = goodClasses(item).length && $(own).length <= $(key).length * 1.5 ? own : key;
+  const firstA = item.tagName === 'a' ? item : $(item).find('a[href]').first()[0];
+  const link = item.tagName === 'a' ? { css: '', attr: 'href' }
+    : firstA === anchor ? { css: 'a', attr: 'href' }
+    : { css: goodClasses(anchor).length ? signature(anchor) : 'a', attr: 'href' };
+
+  const epOpt = numberSelector($, item, episode);
+  if (!epOpt) throw new Error(`Le numéro ${episode} n'apparaît pas dans l'épisode d'exemple sur la page de la série. Vérifiez le numéro de l'épisode.`);
+  const spec = { item: itemSel, episode: epOpt.selector, link };
+
+  const rows = $(itemSel).toArray().map((el) => ({
+    episode: Number((extract($, el, spec.episode, pageUrl) || '').match(/\d+/)?.[0]),
+    link: extract($, el, spec.link, pageUrl),
+    el,
+  })).filter((r) => r.link && Number.isFinite(r.episode));
+  if (!rows.some((r) => sameUrl(r.link, episodeUrl))) throw new Error("La liste détectée ne permet pas de retrouver l'épisode d'exemple. Utilisez le mode avancé (JSON).");
+
+  let warning = null;
+  const sameNumber = rows.filter((r) => r.episode === Number(episode)).length;
+  if (sameNumber > 1) {
+    // Plusieurs saisons sur la même page : il faut lire la saison dans chaque élément.
+    const seOpt = numberSelector($, item, season, epOpt.attr ? { attr: epOpt.attr } : { text: epOpt.text, index: epOpt.index });
+    if (!seOpt) throw new Error(`La page liste plusieurs saisons mais le numéro de saison ${season} n'apparaît pas dans l'épisode d'exemple. Utilisez le mode avancé (JSON).`);
+    spec.season = seOpt.selector;
+  } else {
+    const params = seasonParamsFrom(showUrl, season);
+    if (params) spec.pageParams = params;
+    else if (Number(season) !== 1) warning = `La page de la série semble n'afficher qu'une saison. RR Streaming trouvera les épisodes affichés par défaut sur cette page.`;
+    else warning = "Pour les autres saisons, RR Streaming utilisera les épisodes affichés sur la page de la série. Si le site a une page par saison, refaites ce test avec un épisode de la saison 2.";
+  }
+
+  const samples = rows.slice(0, 8).map((r) => ({
+    episode: r.episode,
+    season: spec.season ? Number((extract($, r.el, spec.season, pageUrl) || '').match(/\d+/)?.[0]) || null : null,
+    link: r.link,
+  }));
+  return { spec, count: rows.length, samples, warning };
+}
+
+async function analyzeEpisodes({ showUrl, episodeUrl, season, episode, headers = {}, render = false }) {
+  if (!absolute(showUrl, 'https://x') || !absolute(episodeUrl, 'https://x')) throw new Error('Adresse invalide');
+  const args = { showUrl, episodeUrl, season: Number(season), episode: Number(episode) };
+  if (!render) {
+    try {
+      const { html, url } = await scraper.fetchHtml(showUrl, headers);
+      return { ...analyzeEpisodesHtml(html, url, args), rendered: false };
+    } catch (err) {
+      if (!scraper.canRender()) throw err;
+    }
+  }
+  const { html, url } = await scraper.fetchPage(showUrl, headers, true);
+  return { ...analyzeEpisodesHtml(html, url, args), rendered: true };
+}
+
 /** Recherche réelle avec une source en cours de création. */
 async function testProvider(draft, { title, year, type = 'movie' }) {
   const errors = validateProvider(draft);
@@ -255,4 +405,4 @@ async function testProvider(draft, { title, year, type = 'movie' }) {
   return { results: results.slice(0, 8), best };
 }
 
-module.exports = { analyzeHtml, analyzeUrl, testProvider };
+module.exports = { analyzeHtml, analyzeUrl, testProvider, analyzeEpisodes, analyzeEpisodesHtml };

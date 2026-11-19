@@ -161,12 +161,21 @@ async function episodeUrl(provider, showUrl, season, episode) {
     for (const [k, v] of Object.entries(ep.params)) u.searchParams.set(k, fill(v, vars));
     return u.toString();
   }
-  const { html, url } = await fetchPage(showUrl, provider.headers, provider.render);
+  // Liste d'épisodes lue sur la page de la série (adresses non prévisibles, ex. /episode/48213).
+  // pageTemplate / pageParams : page à charger pour une saison donnée (ex. ?season={season}).
+  let listUrl = ep.pageTemplate ? fill(ep.pageTemplate, vars) : showUrl;
+  if (ep.pageParams) {
+    const u = new URL(listUrl);
+    for (const [k, v] of Object.entries(ep.pageParams)) u.searchParams.set(k, fill(v, vars));
+    listUrl = u.toString();
+  }
+  const { html, url } = await fetchPage(listUrl, provider.headers, provider.render);
   const $ = cheerio.load(html);
   for (const el of $(ep.item).toArray()) {
-    const sNum = firstInt(extract($, el, ep.season, url));
     const eNum = firstInt(extract($, el, ep.episode, url));
-    if (sNum === Number(season) && eNum === Number(episode)) {
+    // Sans sélecteur de saison, la page ne montre qu'une saison (celle demandée via pageParams/pageTemplate).
+    const seasonOk = ep.season ? firstInt(extract($, el, ep.season, url)) === Number(season) : true;
+    if (seasonOk && eNum === Number(episode)) {
       const link = extract($, el, ep.link, url);
       if (link) return link;
     }

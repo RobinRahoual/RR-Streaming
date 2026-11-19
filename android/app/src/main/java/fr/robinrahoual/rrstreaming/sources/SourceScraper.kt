@@ -64,11 +64,18 @@ class SourceScraper(
             val url = base.toHttpUrlOrNull() ?: throw IOException("Adresse de série invalide : $base")
             return url.newBuilder().apply { params.forEach { (k, v) -> setQueryParameter(k, fill(v, vars)) } }.build().toString()
         }
-        val doc = fetch(showUrl, provider.headers, provider.render)
+        // Liste d'épisodes lue sur la page de la série (éventuellement celle de la saison demandée).
+        var listUrl = ep.pageTemplate?.let { fill(it, vars) } ?: showUrl
+        ep.pageParams?.takeIf { it.isNotEmpty() }?.let { pp ->
+            val u = listUrl.toHttpUrlOrNull() ?: throw IOException("Adresse de série invalide : $listUrl")
+            listUrl = u.newBuilder().apply { pp.forEach { (k, v) -> setQueryParameter(k, fill(v, vars)) } }.build().toString()
+        }
+        val doc = fetch(listUrl, provider.headers, provider.render)
         for (el in doc.select(ep.item!!)) {
-            val s = firstInt(extract(el, ep.season!!))
             val e = firstInt(extract(el, ep.episode!!))
-            if (s == season && e == episode) extract(el, ep.link!!)?.let { return it }
+            // Sans sélecteur de saison, la page ne montre qu'une saison (celle demandée via pageParams/pageTemplate).
+            val seasonOk = ep.season?.let { firstInt(extract(el, it)) == season } ?: true
+            if (seasonOk && e == episode) extract(el, ep.link!!)?.let { return it }
         }
         throw IOException("Épisode S${pad(season)}E${pad(episode)} introuvable")
     }

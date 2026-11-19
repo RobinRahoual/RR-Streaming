@@ -34,6 +34,15 @@ class BuilderAnalyzer(private val scraper: SourceScraper) {
         val rendered: Boolean = false,
     )
 
+    @Serializable data class EpisodeSample(val episode: Int, val season: Int? = null, val link: String)
+    @Serializable data class EpisodesResult(
+        val spec: EpisodeSpec,
+        val count: Int,
+        val samples: List<EpisodeSample>,
+        val warning: String? = null,
+        val rendered: Boolean = false,
+    )
+
     @Serializable data class BestMatch(val title: String, val link: String, val year: String? = null, val score: Double)
     @Serializable data class TestResult(val results: List<Sample>, val best: BestMatch?)
 
@@ -74,6 +83,142 @@ class BuilderAnalyzer(private val scraper: SourceScraper) {
             results = out.results.take(8).map { Sample(it.title, it.link, it.year) },
             best = out.best?.let { BestMatch(it.result.title, it.result.link, it.result.year, it.score) },
         )
+    }
+
+
+    // ------------------------------------------------------------------ Liste d'épisodes (adresses non prévisibles)
+
+    /**
+     * Étape « séries » quand l'adresse d'un épisode n'est pas déductible de celle de la série (ex. /episode/48213) :
+     * repère l'épisode d'exemple sur la page de la série et en déduit la liste et ses sélecteurs.
+     */
+    suspend fun analyzeEpisodes(
+        showUrl: String, episodeUrl: String, season: Int, episode: Int,
+        headers: Map<String, String> = emptyMap(), render: Boolean = false,
+    ): EpisodesResult {
+        require(showUrl.toHttpUrlOrNull() != null && episodeUrl.toHttpUrlOrNull() != null) { "Adresse invalide" }
+        if (!render) {
+            val static = runCatching { analyzeEpisodes(scraper.fetchDocument(showUrl, headers), showUrl, episodeUrl, season, episode) }
+            if (static.isSuccess || !scraper.canRender) return static.getOrThrow()
+        }
+        val doc = scraper.fetchDocument(showUrl, headers, render = true)
+        return analyzeEpisodes(doc, showUrl, episodeUrl, season, episode).copy(rendered = true)
+    }
+
+    fun analyzeEpisodes(doc: Document, showUrl: String, episodeUrl: String, season: Int, episode: Int): EpisodesResult {
+        val pageUrl = doc.location()
+        val anchor = doc.select("a[href]").firstOrNull { a -> absolute(a.attr("href"), pageUrl)?.let { sameUrl(it, episodeUrl) } == true }
+            ?: throw IllegalArgumentException("L'épisode d'exemple n'apparaît pas sur la page de la série. Vérifiez les deux adresses, ou ouvrez la page de la série qui liste ses épisodes.")
+
+        var item: Element? = null
+        var node: Element? = anchor
+        while (node != null && node.tagName() != "body") {
+            val parent = node.parent() ?: break
+            val sig = signature(node)
+            val siblings = parent.children().filter { c -> signature(c) == sig && (c.tagName() == "a" || c.select("a[href]").isNotEmpty()) }
+            if (siblings.size >= 2) { item = node; break }
+            node = parent
+        }
+        val it0 = item ?: throw IllegalArgumentException("La page de la série ne présente pas de liste d'épisodes reconnaissable. Utilisez le mode avancé (JSON).")
+
+        val own = signature(it0)
+        val key = "${signature(it0.parent()!!)} > $own"
+        val itemSel = if (goodClasses(it0).isNotEmpty() && doc.select(own).size <= doc.select(key).size * 1.5) own else key
+        val firstA = if (it0.tagName() == "a") it0 else descendants(it0, "a[href]").firstOrNull()
+        val link = when {
+            it0.tagName() == "a" -> Selector("", "href")
+            firstA === anchor -> Selector("a", "href")
+            else -> Selector(if (goodClasses(anchor).isNotEmpty()) signature(anchor) else "a", "href")
+        }
+
+        val epOpt = numberSelector(it0, episode, null)
+            ?: throw IllegalArgumentException("Le numéro $episode n'apparaît pas dans l'épisode d'exemple sur la page de la série. Vérifiez le numéro de l'épisode.")
+        var spec = EpisodeSpec(item = itemSel, episode = epOpt.selector, link = link)
+
+        data class Row(val episode: Int, val link: String, val el: Element)
+        val rows = doc.select(itemSel).mapNotNull { el ->
+            val e = SourceScraper.extract(el, epOpt.selector)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() } ?: return@mapNotNull null
+            val l = SourceScraper.extract(el, link) ?: return@mapNotNull null
+            Row(e, l, el)
+        }
+        if (rows.none { sameUrl(it.link, episodeUrl) }) {
+            throw IllegalArgumentException("La liste détectée ne permet pas de retrouver l'épisode d'exemple. Utilisez le mode avancé (JSON).")
+        }
+
+        var warning: String? = null
+        if (rows.count { it.episode == episode } > 1) {
+            val seOpt = numberSelector(it0, season, epOpt)
+                ?: throw IllegalArgumentException("La page liste plusieurs saisons mais le numéro de saison $season n'apparaît pas dans l'épisode d'exemple. Utilisez le mode avancé (JSON).")
+            spec = spec.copy(season = seOpt.selector)
+        } else {
+            val params = seasonParamsFrom(showUrl, season)
+            when {
+                params != null -> spec = spec.copy(pageParams = params)
+                season != 1 -> warning = "La page de la série semble n'afficher qu'une saison. RR Streaming trouvera les épisodes affichés par défaut sur cette page."
+                else -> warning = "Pour les autres saisons, RR Streaming utilisera les épisodes affichés sur la page de la série. Si le site a une page par saison, refaites ce test avec un épisode de la saison 2."
+            }
+        }
+
+        val samples = rows.take(8).map { r ->
+            EpisodeSample(
+                episode = r.episode,
+                season = spec.season?.let { s -> SourceScraper.extract(r.el, s)?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() } },
+                link = r.link,
+            )
+        }
+        return EpisodesResult(spec, rows.size, samples, warning)
+    }
+
+    private data class NumberOption(val selector: Selector, val text: String?, val index: Int, val attr: String?, val len: Int, val classed: Boolean)
+
+    /** Sélecteur qui extrait `value` de l'élément (texte + k-ième nombre, ou attribut data-*). `avoid` : option déjà prise. */
+    private fun numberSelector(item: Element, value: Int, avoid: NumberOption?): NumberOption? {
+        val nodes = listOf(item) + descendants(item, "*")
+        val options = mutableListOf<NumberOption>()
+        for (n in nodes) {
+            if (n.tagName() in SKIP_TAGS) continue
+            val text = n.text().replace(WS, " ").trim()
+            if (text.isEmpty() || (n !== item && text.length > 80)) continue
+            Regex("\\d+").findAll(text).map { it.value }.forEachIndexed { k, x ->
+                if (x.toIntOrNull() != value) return@forEachIndexed
+                if (avoid != null && avoid.attr == null && avoid.text == text && avoid.index == k) return@forEachIndexed
+                var css = ""
+                if (n !== item) {
+                    css = signature(n)
+                    if (descendants(item, css).firstOrNull() !== n) css = n.tagName()
+                    if (descendants(item, css).firstOrNull() !== n) return@forEachIndexed
+                }
+                val regex = if (k == 0) "(\\d+)" else "^(?:\\D*\\d+){$k}\\D*?(\\d+)"
+                options += NumberOption(Selector(css, "text", regex), text, k, null, text.length, n !== item && goodClasses(n).isNotEmpty())
+            }
+        }
+        for (n in nodes) {
+            for (a in n.attributes()) {
+                if (!a.key.startsWith("data-") || a.value.trim() != value.toString() || avoid?.attr == a.key) continue
+                val css = if (n === item) "" else signature(n)
+                if (n === item || descendants(item, css).firstOrNull() === n) options += NumberOption(Selector(css, a.key), null, 0, a.key, 0, true)
+            }
+        }
+        return options.sortedWith(compareByDescending<NumberOption> { it.classed }.thenBy { it.len }).firstOrNull()
+    }
+
+    private fun seasonParamsFrom(showUrl: String, season: Int): Map<String, String>? {
+        val u = showUrl.toHttpUrlOrNull() ?: return null
+        for (name in u.queryParameterNames) {
+            val v = u.queryParameter(name) ?: continue
+            if (Regex("^(s|sa|saison|season|sea|ss)$", RegexOption.IGNORE_CASE).matches(name) && v.toIntOrNull() == season) return mapOf(name to "{season}")
+        }
+        return null
+    }
+
+    private fun sameUrl(a: String, b: String): Boolean {
+        fun norm(u: String): String {
+            val x = u.toHttpUrlOrNull() ?: return u.lowercase()
+            val path = x.encodedPath.trimEnd('/')
+            val query = x.encodedQuery?.let { "?$it" } ?: ""
+            return (x.host.removePrefix("www.") + path + query).lowercase()
+        }
+        return norm(a) == norm(b)
     }
 
     // ------------------------------------------------------------------ Résultats

@@ -91,13 +91,19 @@ function validateProvider(raw, path = 'provider') {
           e.push(`${path}.episodes : {season} et {episode} doivent apparaître dans urlTemplate ou params`);
         }
       }
-    } else if (!ep.item || !ep.season || !ep.episode || !ep.link) {
-      e.push(`${path}.episodes : urlTemplate, params ou (item + season + episode + link) requis`);
+    } else if (!ep.item || !ep.episode || !ep.link) {
+      e.push(`${path}.episodes : urlTemplate, params ou (item + episode + link) requis`);
     } else {
       css(e, ep.item, `${path}.episodes.item`);
-      selector(e, ep.season, `${path}.episodes.season`, true);
+      selector(e, ep.season, `${path}.episodes.season`, false);
       selector(e, ep.episode, `${path}.episodes.episode`, true);
       selector(e, ep.link, `${path}.episodes.link`, true);
+      if (ep.pageTemplate != null && (typeof ep.pageTemplate !== 'string' || !/\{season2?\}/.test(ep.pageTemplate))) {
+        e.push(`${path}.episodes.pageTemplate : doit contenir {season}`);
+      }
+      if (ep.pageParams != null && (typeof ep.pageParams !== 'object' || Array.isArray(ep.pageParams) || Object.values(ep.pageParams).some((v) => typeof v !== 'string'))) {
+        e.push(`${path}.episodes.pageParams : objet de chaînes attendu`);
+      }
     }
   }
 

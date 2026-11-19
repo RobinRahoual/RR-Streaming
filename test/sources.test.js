@@ -306,3 +306,57 @@ test('assistant : page construite en JavaScript → rendu puis analyse, et reche
     srv.close();
   }
 });
+
+test('assistant : liste d\'épisodes à adresses numériques (une saison par page)', async () => {
+  const { analyzeEpisodesHtml } = require('../src/main/sources/builder');
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'series-page.html'), 'utf8');
+  const base = 'https://anime.exemple.org';
+  const r = analyzeEpisodesHtml(html, `${base}/anime/jjk?season=1`, {
+    showUrl: `${base}/anime/jjk?season=1`, episodeUrl: `${base}/episode/48206`, season: 1, episode: 6,
+  });
+  assert.strictEqual(r.spec.item, 'a.ep-card');
+  assert.deepStrictEqual(r.spec.link, { css: '', attr: 'href' });
+  assert.strictEqual(r.spec.episode.css, 'span.ep-num');
+  assert.deepStrictEqual(r.spec.pageParams, { season: '{season}' });
+  assert.strictEqual(r.count, 12);
+  assert.deepStrictEqual(r.samples.slice(0, 3).map((x) => x.episode), [1, 2, 3]);
+  assert.strictEqual(r.spec.season, undefined);
+
+  // À l'usage : la saison 2 est demandée via ?season=2, l'épisode 6 lu dans la liste.
+  const requested = [];
+  const { srv, base: local } = await serve((req, res) => {
+    requested.push(req.url);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(html);
+  });
+  try {
+    const provider = { id: 'anime', name: 'Anime', baseUrl: local, types: ['tv'], headers: {},
+      search: { url: '{baseUrl}/s?q={query}', item: 'a', title: { css: '' }, link: { css: '', attr: 'href' } }, episodes: r.spec };
+    assert.deepStrictEqual(validateProvider(provider), []);
+    const url = await scraper.episodeUrl(provider, `${local}/anime/jjk`, 2, 6);
+    assert.strictEqual(url, `${local}/episode/48206`);
+    assert.strictEqual(requested[0], '/anime/jjk?season=2');
+  } finally {
+    srv.close();
+  }
+});
+
+test('assistant : plusieurs saisons sur la même page → numéro de saison lu dans chaque épisode', () => {
+  const { analyzeEpisodesHtml } = require('../src/main/sources/builder');
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'series-multi.html'), 'utf8');
+  const base = 'https://x.org';
+  const r = analyzeEpisodesHtml(html, `${base}/serie/abc`, { showUrl: `${base}/serie/abc`, episodeUrl: `${base}/watch/9203`, season: 2, episode: 3 });
+  assert.strictEqual(r.spec.item, 'li.episode');
+  assert.ok(r.spec.season, 'sélecteur de saison attendu');
+  const $ = cheerio.load(html);
+  const found = $(r.spec.item).toArray().find((el) =>
+    Number(scraper.extract($, el, r.spec.season, base)) === 2 && Number(scraper.extract($, el, r.spec.episode, base)) === 5);
+  assert.strictEqual(scraper.extract($, found, r.spec.link, base), `${base}/watch/9205`);
+});
+
+test('assistant : épisode absent de la page → message clair', () => {
+  const { analyzeEpisodesHtml } = require('../src/main/sources/builder');
+  const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'series-page.html'), 'utf8');
+  assert.throws(() => analyzeEpisodesHtml(html, 'https://a.org/anime/jjk', { showUrl: 'https://a.org/anime/jjk', episodeUrl: 'https://a.org/episode/1', season: 1, episode: 6 }),
+    /n'apparaît pas sur la page de la série/);
+});

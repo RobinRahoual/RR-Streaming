@@ -418,7 +418,7 @@
       w.manual = { item: p.search.item, title: p.search.title, link: p.search.link, year: p.search.year, poster: p.search.poster };
       const ep = p.episodes || null;
       const hasParams = !!(ep && ep.params && Object.keys(ep.params).length);
-      w.epSpec = ep && (ep.urlTemplate || hasParams) ? { ...(ep.urlTemplate ? { urlTemplate: ep.urlTemplate } : {}), ...(hasParams ? { params: ep.params } : {}) } : null;
+      w.epSpec = ep && ep.item ? ep : ep && (ep.urlTemplate || hasParams) ? { ...(ep.urlTemplate ? { urlTemplate: ep.urlTemplate } : {}), ...(hasParams ? { params: ep.params } : {}) } : null;
       w.keepEpisodes = ep && !w.epSpec ? ep : null;
       w.keepIframe = p.player && p.player.iframe || null;
       w.keepPlayer = p.player || {};
@@ -520,9 +520,7 @@
       if (S.origin !== E.origin) return { error: "Les deux adresses doivent venir du même site." };
 
       const sPath = S.pathname.replace(/\/+$/, ""), ePath = E.pathname.replace(/\/+$/, "");
-      if (ePath !== sPath && !ePath.startsWith(sPath)) {
-        return { error: "L'adresse de l'épisode ne prolonge pas celle de la série. Vérifiez que vous avez ouvert un épisode de cette même série." };
-      }
+      if (ePath !== sPath && !ePath.startsWith(sPath)) return { error: "list", code: "LIST" };
       const token = (kind, raw) => (raw.length === 2 && raw.startsWith("0") ? `{${kind}2}` : `{${kind}}`);
       const isNum = (v, n) => /^\d+$/.test(v) && Number(v) === Number(n);
       let seasonDone = false, episodeDone = false;
@@ -548,13 +546,11 @@
           if (seasonDone && !episodeDone && isNum(tok, episode)) { episodeDone = true; return token("episode", tok); }
           return tok;
         });
-        if (S.search) return { error: "Cette forme d'adresse n'est pas prise en charge par l'assistant : utilisez le mode avancé (JSON)." };
+        if (S.search) return { error: "list", code: "LIST" };
       }
 
-      if (!seasonDone || !episodeDone) {
-        const missing = [!seasonDone ? `la saison ${season}` : null, !episodeDone ? `l'épisode ${episode}` : null].filter(Boolean).join(" et ");
-        return { error: `Impossible de retrouver ${missing} dans l'adresse de l'épisode. Vérifiez les numéros ci-dessus.` };
-      }
+      // Numéros introuvables dans l'adresse (identifiant d'épisode) : lire la liste sur la page de la série.
+      if (!seasonDone || !episodeDone) return { error: "list", code: "LIST" };
       const spec = {};
       if (rest) spec.urlTemplate = "{link}" + rest;
       if (Object.keys(params).length) spec.params = params;
@@ -562,6 +558,7 @@
     }
 
     function renderEpisodeSpec(spec) {
+      if (spec.item) return [el("span", { class: "tok" }, "liste d'épisodes"), " lue sur la page de la série", spec.pageParams ? [" (saison via ", Object.keys(spec.pageParams)[0], "=", el("span", { class: "tok" }, "saison"), ")"] : null];
       const nodes = spec.urlTemplate ? renderTemplate(spec.urlTemplate) : [el("span", { class: "tok" }, "série")];
       if (spec.params) {
         Object.entries(spec.params).forEach(([k, v], i) => nodes.push(i ? "&" : "?", `${k}=`, ...renderTemplate(v)));
@@ -570,6 +567,7 @@
     }
 
     function episodeExample(spec) {
+      if (spec.item) return "Liste lue sur la page de la série";
       const ex = (t) => t.replace("{link}", "…").replace("{season2}", "02").replace("{season}", "2").replace("{episode2}", "03").replace("{episode}", "3");
       let out = spec.urlTemplate ? ex(spec.urlTemplate) : "…";
       if (spec.params) out += "?" + Object.entries(spec.params).map(([k, v]) => `${k}=${ex(v)}`).join("&");
@@ -740,15 +738,45 @@
             el("div", { class: "stepper" }, el("button", { onclick: () => set(-1) }, "−"), outN, el("button", { onclick: () => set(1) }, "+")));
         };
         step.append(el("div", { class: "label-sm" }, "3. Numéros de cet épisode"), el("div", { class: "two" }, stepper("Saison", "season"), stepper("Épisode", "episode")));
-        step.append(el("p", { class: "foot", style: { margin: "10px 4px 0" } }, "Astuce : choisissez un épisode dont le numéro est différent de la saison (par exemple saison 2, épisode 3)."));
+        step.append(el("p", { class: "foot", style: { margin: "10px 4px 0" } }, "Astuce : choisissez un épisode dont le numéro est différent de la saison (par exemple saison 2, épisode 3). Si l'adresse de l'épisode est un simple numéro, RR Streaming lira la liste des épisodes sur la page de la série."));
         const out = el("div");
         step.append(out);
 
         const btn = footer("Continuer", () => go(1), {
           secondary: el("button", { class: "btn ghost", onclick: () => { W.types = ["movie"]; W.epSpec = null; index = steps().indexOf("player"); goingBack = false; show(); } }, "Ce site n'a pas de séries"),
         });
+        let listTimer = null, listToken = 0;
+        // Adresse d'épisode non déductible (ex. /episode/48213) : lire la liste sur la page de la série.
+        function analyzeList() {
+          const my = ++listToken;
+          clearTimeout(listTimer);
+          out.replaceChildren(el("div", { class: "loading", style: { padding: "26px 0" } }, el("div", { class: "spinner" }), "Lecture de la liste des épisodes sur la page de la série…"));
+          btn.disabled = true;
+          listTimer = setTimeout(async () => {
+            try {
+              const r = await api("POST", "/api/builder/episodes", { showUrl: W.showUrl.trim(), episodeUrl: W.episodeUrl.trim(), season: W.season, episode: W.episode, render: W.render });
+              if (my !== listToken) return;
+              if (r.rendered) W.render = true;
+              W.epSpec = r.spec;
+              const nums = r.samples.map((x) => (x.season ? `S${x.season} É${x.episode}` : `É${x.episode}`));
+              out.replaceChildren(el("div", { class: "detect ok", style: { wordBreak: "normal" } },
+                el("b", {}, "Liste d'épisodes détectée"),
+                `${r.count} épisodes trouvés sur la page de la série (${nums.slice(0, 6).join(", ")}${r.count > 6 ? "…" : ""}). RR Streaming y cherchera l'épisode demandé.`),
+                r.warning ? el("p", { class: "foot", style: { margin: "10px 4px 0" } }, r.warning) : null);
+              btn.disabled = false;
+            } catch (e) {
+              if (my !== listToken) return;
+              W.epSpec = null;
+              out.replaceChildren(el("div", { class: "detect warn" }, el("b", {}, "À vérifier"), errText(e)));
+              btn.disabled = !W.keepEpisodes;
+            }
+          }, 600);
+        }
+
         function update() {
           const r = deriveEpisodeTemplate(W.showUrl, W.episodeUrl, W.season, W.episode);
+          if (r.error && r.code === "LIST") return analyzeList();
+          listToken++;
           W.epSpec = r.spec || (W.showUrl || W.episodeUrl ? null : W.epSpec);
           out.replaceChildren();
           if (r.spec) {

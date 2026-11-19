@@ -80,7 +80,7 @@
         "episodes": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Requis si types contient \"tv\". urlTemplate et/ou params, ou item + season + episode + link (parsing de la page de la série).",
+          "description": "Requis si types contient \"tv\". urlTemplate et/ou params, ou mode liste : item + episode + link (+ season, pageTemplate, pageParams facultatifs) lus sur la page de la série.",
           "properties": {
             "urlTemplate": { "type": "string", "description": "Variables : {link}, {season}, {episode}, {season2}, {episode2} (sur 2 chiffres)." },
             "params": {
@@ -88,8 +88,10 @@
               "additionalProperties": { "type": "string" },
               "description": "Paramètres d'adresse ajoutés ou remplacés sur la page de la série (ou sur urlTemplate). Ex. : { \"s\": \"{season}\", \"ep\": \"{episode}\" }."
             },
-            "item": { "type": "string" },
-            "season": { "$ref": "#/$defs/selector" },
+            "item": { "type": "string", "description": "Mode liste : élément répété d'un épisode sur la page de la série." },
+            "season": { "$ref": "#/$defs/selector", "description": "Facultatif : numéro de saison dans l'élément (si la page liste plusieurs saisons)." },
+            "pageTemplate": { "type": "string", "description": "Facultatif : page à charger pour une saison. Variables {link}, {season}, {season2}." },
+            "pageParams": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Facultatif : paramètres posés sur la page de la série pour choisir la saison, ex. { \"season\": \"{season}\" }." },
             "episode": { "$ref": "#/$defs/selector" },
             "link": { "$ref": "#/$defs/selector" }
           }
