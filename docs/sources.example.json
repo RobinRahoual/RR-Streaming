@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "name": "Mes sources",
+  "description": "Liste personnelle",
+  "providers": [
+    {
+      "id": "exemple",
+      "name": "Exemple",
+      "priority": 60,
+      "baseUrl": "https://exemple.org",
+      "language": "fr",
+      "types": ["movie", "tv"],
+      "headers": { "Accept-Language": "fr-FR,fr;q=0.9" },
+      "search": {
+        "url": "{baseUrl}/recherche?q={query}",
+        "query": "{title}",
+        "item": "article.card",
+        "title": { "css": "h3.card-title" },
+        "year": { "css": ".card-meta", "regex": "(\\d{4})" },
+        "link": { "css": "a", "attr": "href" },
+        "poster": { "css": "img", "attr": "data-src" }
+      },
+      "match": { "minScore": 0.8, "yearTolerance": 1 },
+      "episodes": {
+        "urlTemplate": "{link}/saison-{season}/episode-{episode}"
+      },
+      "player": {
+        "iframe": { "css": "iframe#player", "attr": "src" },
+        "allowedHosts": ["cdn.exemple.org"],
+        "timeoutMs": 20000
+      }
+    }
+  ]
+}

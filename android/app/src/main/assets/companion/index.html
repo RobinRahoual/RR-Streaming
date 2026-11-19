@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<title>RR Streaming · Sources</title>
+<style>
+  :root {
+    --bg: #000; --group: rgba(28,28,30,.78); --elev: #2c2c2e; --sep: rgba(84,84,88,.55);
+    --label: #fff; --label2: rgba(235,235,245,.6); --label3: rgba(235,235,245,.3);
+    --blue: #0a84ff; --green: #30d158; --red: #ff453a; --fill: rgba(118,118,128,.24);
+    --r: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--label); background: var(--bg);
+    background-image: radial-gradient(1200px 600px at 20% -10%, #1d2a44 0%, transparent 60%),
+                      radial-gradient(900px 500px at 110% 10%, #2a1d3a 0%, transparent 55%);
+    background-attachment: fixed; -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 16px 80px; }
+  header { padding: 28px 4px 18px; display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+  h1 { font: 700 34px/1.1 -apple-system, "SF Pro Display", system-ui; letter-spacing: .3px; margin: 0; }
+  .pill { font-size: 13px; padding: 6px 12px; border-radius: 99px; background: var(--fill); color: var(--label2); white-space: nowrap; }
+  .pill.on::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 7px; vertical-align: 1px; }
+  h2 { font-size: 13px; font-weight: 400; text-transform: uppercase; letter-spacing: .4px; color: var(--label2); margin: 30px 16px 8px; }
+  .foot { font-size: 13px; color: var(--label2); margin: 8px 16px 0; line-height: 1.4; }
+  .group {
+    background: var(--group); border-radius: var(--r); overflow: hidden;
+    -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; position: relative; }
+  .row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px; background: var(--sep); }
+  .row .main { flex: 1; min-width: 0; }
+  .title { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { font-size: 13px; color: var(--label2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub.err { color: var(--red); white-space: normal; }
+  .dim .title, .dim .sub { opacity: .45; }
+  .empty { padding: 18px 16px; color: var(--label2); font-size: 15px; }
+  input[type=url], input[type=text], textarea {
+    width: 100%; background: transparent; border: 0; outline: 0; color: var(--label);
+    font: 17px/1.35 inherit; font-family: inherit; padding: 0;
+  }
+  textarea { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; min-height: 220px; resize: vertical; padding: 14px 16px; }
+  ::placeholder { color: var(--label3); }
+  button {
+    font: inherit; font-size: 17px; border: 0; background: none; color: var(--blue); padding: 6px 4px; cursor: pointer;
+  }
+  button:disabled { opacity: .4; }
+  button.danger { color: var(--red); }
+  button.primary {
+    width: 100%; background: var(--blue); color: #fff; border-radius: 12px; padding: 14px; font-weight: 600; margin-top: 12px;
+  }
+  button.secondary { width: 100%; background: var(--fill); color: var(--label); border-radius: 12px; padding: 14px; font-weight: 600; margin-top: 10px; }
+  .actions { display: flex; gap: 14px; flex-shrink: 0; }
+  .switch { position: relative; width: 51px; height: 31px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: var(--fill); border-radius: 99px; transition: .25s; cursor: pointer; }
+  .switch span::before { content: ""; position: absolute; width: 27px; height: 27px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .25s; box-shadow: 0 3px 8px rgba(0,0,0,.25); }
+  .switch input:checked + span { background: var(--green); }
+  .switch input:checked + span::before { transform: translateX(20px); }
+  .seg { display: flex; background: var(--fill); border-radius: 9px; padding: 2px; margin: 0 0 12px; }
+  .seg button { flex: 1; color: var(--label); font-size: 13px; font-weight: 500; padding: 7px; border-radius: 7px; }
+  .seg button.active { background: #636366; box-shadow: 0 3px 8px rgba(0,0,0,.12); }
+  .toast {
+    position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%);
+    background: rgba(44,44,46,.92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    padding: 12px 20px; border-radius: 99px; font-size: 15px; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
+    max-width: calc(100vw - 32px); white-space: pre-line; text-align: center; z-index: 10;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+  .toast.err { background: rgba(120,20,20,.92); }
+  /* Écran d'appairage */
+  #gate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); z-index: 5; }
+  #gate.show { display: flex; }
+  #gate .card { width: min(360px, 90vw); text-align: center; }
+  #gate h3 { font-size: 22px; margin: 0 0 6px; }
+  #gate p { color: var(--label2); font-size: 15px; margin: 0 0 22px; }
+  #codeInput { text-align: center; font: 600 34px ui-monospace, "SF Mono", monospace; letter-spacing: 10px; background: var(--group); border-radius: var(--r); padding: 16px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="card">
+    <h3>Code d'appairage</h3>
+    <p>Saisissez le code à 6 chiffres affiché dans l&apos;onglet Sources de RR Streaming.</p>
+    <input id="codeInput" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+    <button class="primary" id="codeBtn">Se connecter</button>
+  </div>
+</div>
+
+<main>
+  <header>
+    <h1>Sources</h1>
+    <span class="pill" id="status">Connexion…</span>
+  </header>
+
+  <h2>Ajouter une liste</h2>
+  <div class="group">
+    <div class="row"><input id="subUrl" type="url" placeholder="https://… /sources.json" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+  </div>
+  <button class="primary" id="addSubBtn">Ajouter</button>
+  <p class="foot">L'URL d'un fichier JSON au format « sources ». RR Streaming le télécharge et peut le resynchroniser à tout moment.</p>
+
+  <h2 style="display:flex;justify-content:space-between;align-items:center;margin-right:4px">
+    <span>Listes</span><button id="syncAllBtn" style="font-size:15px;text-transform:none;letter-spacing:0">Tout synchroniser</button>
+  </h2>
+  <div class="group" id="subs"></div>
+
+  <h2>Sources</h2>
+  <div class="group" id="providers"></div>
+  <p class="foot">Une source locale qui porte le même identifiant qu'une source de liste la remplace. Les désactivations sont conservées après synchronisation.</p>
+
+  <h2 id="editorTitle">Nouvelle source</h2>
+  <div class="seg" id="seg">
+    <button data-mode="provider" class="active">Une source</button>
+    <button data-mode="import">Fichier complet</button>
+  </div>
+  <div class="group"><textarea id="editor" spellcheck="false" autocapitalize="off"></textarea></div>
+  <button class="primary" id="saveBtn">Enregistrer dans RR Streaming</button>
+  <button class="secondary" id="fileBtn">Charger un fichier .json…</button>
+  <button class="secondary hidden" id="cancelBtn">Annuler la modification</button>
+  <input type="file" id="file" accept="application/json,.json" class="hidden">
+  <p class="foot" id="editorFoot"></p>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+
+  const TEMPLATE_PROVIDER = {
+    id: "ma-source", name: "Ma source", priority: 50, baseUrl: "https://exemple.org", language: "fr",
+    types: ["movie", "tv"],
+    search: {
+      url: "{baseUrl}/recherche?q={query}", query: "{title}", item: "article.card",
+      title: { css: "h3" }, year: { css: ".year", regex: "(\\d{4})" }, link: { css: "a", attr: "href" }
+    },
+    episodes: { urlTemplate: "{link}/saison-{season}/episode-{episode}" },
+    player: { iframe: { css: "iframe#player", attr: "src" } }
+  };
+  const TEMPLATE_DOC = { schemaVersion: 1, name: "Ma liste", providers: [TEMPLATE_PROVIDER] };
+
+  // ---------- Appairage
+  const params = new URLSearchParams(location.search);
+  let code = params.get("code") || sessionStorage.getItem("code") || "";
+  if (params.has("code")) { sessionStorage.setItem("code", code); history.replaceState(null, "", "/"); }
+
+  // ---------- Élément DOM sûr (aucun innerHTML : les noms viennent de JSON distants)
+  function el(tag, attrs = {}, ...children) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (k === "class") n.className = v;
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of children.flat()) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    return n;
+  }
+
+  // ---------- API
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: { "X-Pairing-Code": code, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : (typeof body === "string" ? body : JSON.stringify(body)),
+    });
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+    if (res.status === 401) { showGate(); throw new Error(data.error || "Code incorrect"); }
+    if (!res.ok) {
+      const details = (data.details || []).slice(0, 6).join("\n");
+      throw new Error((data.error || "Erreur " + res.status) + (details ? "\n" + details : ""));
+    }
+    return data;
+  }
+
+  let toastTimer;
+  function toast(msg, isErr = false) {
+    const t = $("toast");
+    t.textContent = msg; t.classList.toggle("err", isErr); t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), isErr ? 6000 : 2500);
+  }
+
+  async function act(fn, okMsg) {
+    try { const s = await fn(); if (s && s.revision !== undefined) render(s); if (okMsg) toast(okMsg); return true; }
+    catch (e) { toast(e.message, true); return false; }
+  }
+
+  // ---------- Rendu
+  let state = null;
+
+  function ago(ts) {
+    if (!ts) return "jamais synchronisée";
+    const s = Math.round((Date.now() - ts) / 1000);
+    const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
+    if (s < 60) return "à l'instant";
+    if (s < 3600) return rtf.format(-Math.round(s / 60), "minute");
+    if (s < 86400) return rtf.format(-Math.round(s / 3600), "hour");
+    return rtf.format(-Math.round(s / 86400), "day");
+  }
+
+  function toggle(checked, onchange) {
+    return el("label", { class: "switch" },
+      el("input", { type: "checkbox", checked: checked, onchange: (e) => onchange(e.target.checked) }),
+      el("span"));
+  }
+
+  function render(s) {
+    state = s;
+    $("status").textContent = "Connecté à RR Streaming"; $("status").classList.add("on");
+
+    const subs = $("subs"); subs.replaceChildren();
+    if (!s.subscriptions.length) subs.append(el("div", { class: "empty" }, "Aucune liste ajoutée."));
+    for (const sub of s.subscriptions) {
+      const meta = `${sub.providerCount} source${sub.providerCount > 1 ? "s" : ""} · ${ago(sub.lastSyncAt)}`;
+      subs.append(el("div", { class: "row" + (sub.enabled ? "" : " dim") },
+        el("div", { class: "main" },
+          el("div", { class: "title" }, sub.name),
+          el("div", { class: "sub" }, sub.url),
+          el("div", { class: "sub" + (sub.lastError ? " err" : "") }, sub.lastError ? "⚠︎ " + sub.lastError : meta)),
+        el("div", { class: "actions" },
+          el("button", { onclick: () => act(() => api("POST", `/api/subscriptions/${sub.id}/sync`), "Liste synchronisée") }, "Sync"),
+          el("button", { class: "danger", onclick: () => confirm(`Supprimer « ${sub.name} » ?`) && act(() => api("DELETE", `/api/subscriptions/${sub.id}`), "Liste supprimée") }, "Suppr.")),
+        toggle(sub.enabled, (v) => act(() => api("POST", `/api/subscriptions/${sub.id}/toggle`, { enabled: v })))));
+    }
+
+    const prov = $("providers"); prov.replaceChildren();
+    if (!s.providers.length) prov.append(el("div", { class: "empty" }, "Aucune source."));
+    for (const e of s.providers) {
+      const p = e.provider, local = e.subscriptionId == null;
+      const types = (p.types || []).map((t) => (t === "movie" ? "Films" : "Séries")).join(" · ");
+      prov.append(el("div", { class: "row" + (e.enabled ? "" : " dim") },
+        el("div", { class: "main" },
+          el("div", { class: "title" }, p.name),
+          el("div", { class: "sub" }, `${e.originName} · ${types} · priorité ${p.priority}`)),
+        el("div", { class: "actions" },
+          el("button", { onclick: () => edit(p, local) }, local ? "Modifier" : "Copier"),
+          local ? el("button", { class: "danger", onclick: () => confirm(`Supprimer « ${p.name} » ?`) && act(() => api("DELETE", `/api/providers/${encodeURIComponent(p.id)}`), "Source supprimée") }, "Suppr.") : null),
+        toggle(e.enabled, (v) => act(() => api("POST", `/api/providers/${encodeURIComponent(p.id)}/toggle`, { enabled: v })))));
+    }
+  }
+
+  // ---------- Éditeur
+  let mode = "provider";
+  function setMode(m, value) {
+    mode = m;
+    document.querySelectorAll("#seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === m));
+    $("editor").value = JSON.stringify(value ?? (m === "provider" ? TEMPLATE_PROVIDER : TEMPLATE_DOC), null, 2);
+    $("editorFoot").textContent = m === "provider"
+      ? "Une source au format du schéma. Elle est validée par l&apos;application avant d'être enregistrée."
+      : "Un document complet { schemaVersion, providers: [...] }. Toutes ses sources deviennent locales.";
+    $("editorTitle").textContent = m === "provider" ? "Nouvelle source" : "Importer un fichier";
+    $("cancelBtn").classList.add("hidden");
+  }
+  function edit(p, local) {
+    setMode("provider", local ? p : { ...p, id: p.id });
+    $("editorTitle").textContent = local ? `Modifier « ${p.name} »` : `Copie locale de « ${p.name} »`;
+    $("editorFoot").textContent = local ? "Enregistrer remplace la source." : "Garder le même id pour remplacer la source de la liste, ou changer l'id pour en créer une nouvelle.";
+    $("cancelBtn").classList.remove("hidden");
+    $("editor").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  $("seg").addEventListener("click", (e) => { const m = e.target.dataset?.mode; if (m) setMode(m); });
+  $("cancelBtn").onclick = () => setMode("provider");
+  $("saveBtn").onclick = async () => {
+    const raw = $("editor").value;
+    try { JSON.parse(raw); } catch (e) { return toast("JSON invalide : " + e.message, true); }
+    const ok = mode === "provider"
+      ? await act(() => api("POST", "/api/providers", raw), "Source enregistrée")
+      : await act(() => api("POST", "/api/import", raw), "Fichier importé");
+    if (ok) setMode(mode);
+  };
+  $("fileBtn").onclick = () => $("file").click();
+  $("file").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text(); e.target.value = "";
+    try {
+      const obj = JSON.parse(text);
+      setMode(Array.isArray(obj.providers) ? "import" : "provider", obj);
+    } catch (err) { toast("Fichier JSON invalide", true); }
+  };
+
+  // ---------- Actions
+  $("addSubBtn").onclick = async () => {
+    const url = $("subUrl").value.trim(); if (!url) return;
+    const btn = $("addSubBtn"); btn.disabled = true; btn.textContent = "Téléchargement…";
+    if (await act(() => api("POST", "/api/subscriptions", { url }), "Liste ajoutée")) $("subUrl").value = "";
+    btn.disabled = false; btn.textContent = "Ajouter";
+  };
+  $("subUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") $("addSubBtn").click(); });
+  $("syncAllBtn").onclick = () => act(() => api("POST", "/api/sync"), "Synchronisation terminée");
+
+  // ---------- Gate
+  function showGate() { $("gate").classList.add("show"); $("codeInput").focus(); }
+  $("codeBtn").onclick = async () => {
+    code = $("codeInput").value.replace(/\D/g, "");
+    sessionStorage.setItem("code", code);
+    if (await act(() => api("GET", "/api/state"))) $("gate").classList.remove("show");
+  };
+  $("codeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("codeBtn").click(); });
+
+  // ---------- Rafraîchissement (la TV peut aussi modifier l'état)
+  async function poll() {
+    if (document.hidden || $("gate").classList.contains("show")) return;
+    try {
+      const s = await api("GET", "/api/state");
+      if (!state || s.revision !== state.revision) render(s);
+    } catch {
+      $("status").textContent = "Hors ligne"; $("status").classList.remove("on");
+    }
+  }
+
+  setMode("provider");
+  if (!code) showGate(); else poll();
+  setInterval(poll, 3000);
+  document.addEventListener("visibilitychange", poll);
+})();
+</script>
+</body>
+</html>

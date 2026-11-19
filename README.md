@@ -1,0 +1,81 @@
+# RR Streaming
+
+Lecteur multimédia personnel avec une interface inspirée de tvOS. Le catalogue (affiches, synopsis, saisons, épisodes) vient de **TMDB**. Les **sources** ajoutées par l'utilisateur servent uniquement à trouver le flux vidéo d'un titre au moment de la lecture.
+
+RR Streaming ne contient et ne fournit aucun contenu : la lecture dépend uniquement des sources configurées par l'utilisateur.
+
+## Installation (Windows)
+
+1. Téléchargez `RR-Streaming-Setup-x.y.z.exe` depuis la page [Releases](https://github.com/RobinRahoual/RR-Streaming/releases/latest).
+2. L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a protégé votre ordinateur ». Cliquez sur **Informations complémentaires → Exécuter quand même**.
+3. Au premier lancement, ouvrez **Réglages** et collez votre clé API TMDB (gratuite : themoviedb.org → Paramètres → API).
+4. La première ouverture de l'onglet **Sources** démarre le serveur compagnon : autorisez RR Streaming dans le pare-feu Windows (réseaux privés) pour pouvoir y accéder depuis un téléphone.
+
+Les mises à jour sont automatiques : l'application vérifie GitHub Releases au démarrage puis toutes les 4 h, télécharge la nouvelle version en arrière-plan et l'installe à la fermeture (ou tout de suite avec « Redémarrer »).
+
+## Fonctionnement
+
+```
+Catalogue TMDB ──► Fiche (film / épisode) ──► Lire
+                                               │
+           Sources actives, par priorité ◄─────┘
+           1. recherche du titre sur la source (sélecteurs CSS du JSON)
+           2. choix du meilleur résultat (similarité du titre + année)
+           3. page de l'épisode (séries), puis iframe du lecteur si définie
+           4. fenêtre invisible : interception réseau des .m3u8 / .mpd / .mp4
+              + headers (Referer, Origin, User-Agent, Cookie), pubs et redirections bloquées
+           5. lecture HLS (hls.js), DASH (dash.js) ou MP4, headers rejoués sur chaque segment
+```
+
+### Sources
+
+- **Listes** : URL d'un fichier JSON (format décrit dans [`docs/sources.schema.json`](docs/sources.schema.json), exemple dans [`docs/sources.example.json`](docs/sources.example.json)). Synchronisation avec ETag ; une liste en erreur garde ses anciennes sources.
+- **Sources locales** : ajoutées depuis la page compagnon ou importées depuis un fichier. Une source locale remplace celle d'une liste qui a le même `id`.
+- **Page compagnon** : l'onglet Sources affiche un QR code et un code à 6 chiffres. Depuis un téléphone sur le même réseau, on ajoute, modifie ou supprime des sources. Le serveur ne tourne que lorsque l'onglet Sources est ouvert.
+
+### Raccourcis
+
+| Touche | Action |
+|---|---|
+| Flèches | Déplacer le focus (comme une télécommande) |
+| Entrée | Valider |
+| Échap / Retour arrière | Retour |
+| Espace | Lecture / pause |
+| ← / → (lecteur, contrôles masqués) | −10 s / +10 s |
+| F | Plein écran |
+
+## Développement
+
+```bash
+npm install
+npm start          # lance l'application
+npm test           # tests (validation, scraping, résolveur, dépôt, serveur compagnon)
+npm run dist       # construit l'installateur Windows dans dist/ (sous Windows)
+```
+
+```
+src/main/            Processus principal Electron
+  sources/           Validation, dépôt (listes + locales), scraping et correspondance des titres
+  resolver/          Fenêtre d'interception réseau + pipeline TMDB → flux
+  companion/         Serveur HTTP local + QR code
+  tmdb.js            Client TMDB (clé v3 ou jeton v4)
+  updater.js         Mises à jour automatiques (electron-updater + GitHub Releases)
+src/renderer/        Interface (Accueil, Films, Séries, Recherche, fiches, Sources, Réglages, lecteur)
+src/companion/       Page web compagnon (partagée avec la version Fire TV)
+android/             Modules Kotlin de la version Fire TV (résolveur, sources, serveur compagnon, écran Sources)
+docs/                Schéma JSON des sources
+```
+
+## Publier une nouvelle version
+
+1. Mettre à jour `version` dans `package.json` (ex. `0.2.0`).
+2. Commit, puis tag et push :
+   ```bash
+   git tag v0.2.0
+   git push origin main --tags
+   ```
+3. Le workflow **Release Windows** construit l'installateur sur `windows-latest` et le publie dans une Release GitHub avec `latest.yml`. Les installations existantes se mettent à jour automatiquement.
+
+---
+
+Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.

@@ -1,0 +1,88 @@
+{
+  "name": "rr-streaming",
+  "productName": "RR Streaming",
+  "version": "0.1.0",
+  "description": "RR Streaming — lecteur multimédia personnel (catalogue TMDB, sources configurables)",
+  "author": "Robin Rahoual",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RobinRahoual/RR-Streaming.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "dashjs": "^5.3.0",
+    "electron-updater": "^6.8.11",
+    "hls.js": "^1.7.4",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "fr.robinrahoual.rrstreaming",
+    "productName": "RR Streaming",
+    "copyright": "© Robin Rahoual",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json",
+      "!**/*.map",
+      "!**/*.debug.js"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "RR-Streaming-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RR Streaming",
+      "uninstallDisplayName": "RR Streaming",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "icon": "build/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RobinRahoual",
+        "repo": "RR-Streaming",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

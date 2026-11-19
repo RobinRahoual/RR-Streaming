@@ -1,0 +1,213 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const http = require('node:http');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const cheerio = require('cheerio');
+
+const { validateDocument, validateProvider } = require('../src/main/sources/validator');
+const { SourceRepository } = require('../src/main/sources/repository');
+const scraper = require('../src/main/sources/scraper');
+const { createClassifier, rank } = require('../src/main/resolver/classifier');
+const { CompanionServer } = require('../src/main/companion/server');
+
+const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures-sources.json'), 'utf8'));
+const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rr-'));
+
+function serve(handler) {
+  return new Promise((resolve) => {
+    const srv = http.createServer(handler);
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, base: `http://127.0.0.1:${srv.address().port}` }));
+  });
+}
+
+// ------------------------------------------------------------ Validation
+
+test('le document d\'exemple est valide', () => {
+  assert.deepStrictEqual(validateDocument(example), []);
+});
+
+test('les erreurs de validation sont précises', () => {
+  const bad = structuredClone(example.providers[0]);
+  bad.id = 'Mauvais ID';
+  bad.search.url = 'https://x.org/search';
+  bad.search.item = 'div[';
+  delete bad.episodes;
+  const errors = validateProvider(bad);
+  assert.ok(errors.some((e) => e.includes('.id')));
+  assert.ok(errors.some((e) => e.includes('{query}')));
+  assert.ok(errors.some((e) => e.includes('search.item') && e.includes('CSS')));
+  assert.ok(errors.some((e) => e.includes('episodes')));
+});
+
+test('ids en double refusés', () => {
+  const doc = { schemaVersion: 1, providers: [example.providers[0], example.providers[0]] };
+  assert.ok(validateDocument(doc).some((e) => e.includes('double')));
+});
+
+// ------------------------------------------------------------ Extraction & correspondance
+
+test('extract : texte, attribut absolu, regex', () => {
+  const $ = cheerio.load('<article><h3> Le  Film </h3><a href="/film/42">x</a><span class="m">Sortie 2021 · 2h</span></article>');
+  const el = $('article')[0];
+  assert.strictEqual(scraper.extract($, el, { css: 'h3' }, 'https://a.org/'), 'Le Film');
+  assert.strictEqual(scraper.extract($, el, { css: 'a', attr: 'href' }, 'https://a.org/search'), 'https://a.org/film/42');
+  assert.strictEqual(scraper.extract($, el, { css: '.m', regex: '(\\d{4})' }, 'https://a.org/'), '2021');
+});
+
+test('pickBest privilégie le bon titre et la bonne année', () => {
+  const results = [
+    { title: 'Dune (1984)', year: '1984', link: 'a' },
+    { title: 'Dune', year: '2021', link: 'b' },
+    { title: 'Dune : Deuxième partie', year: '2024', link: 'c' },
+  ];
+  const best = scraper.pickBest(results, { title: 'Dune', year: '2021' }, { minScore: 0.8, yearTolerance: 1 });
+  assert.strictEqual(best.link, 'b');
+  assert.strictEqual(scraper.pickBest(results, { title: 'Inception', year: '2010' }, { minScore: 0.8, yearTolerance: 1 }), null);
+});
+
+test('similarity ignore accents, casse et articles', () => {
+  assert.ok(scraper.similarity('Le Fabuleux Destin d\'Amélie Poulain', 'fabuleux destin d amelie poulain') > 0.95);
+});
+
+test('search + episodeUrl de bout en bout sur un faux site', async () => {
+  const { srv, base } = await serve((req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (req.url.startsWith('/recherche')) {
+      assert.match(req.url, /q=The%20Office/);
+      return res.end(`<article class="card"><h3 class="card-title">The Office</h3><span class="card-meta">2005</span><a href="/serie/the-office">voir</a></article>
+                      <article class="card"><h3 class="card-title">The Office (UK)</h3><span class="card-meta">2001</span><a href="/serie/uk">voir</a></article>`);
+    }
+    res.statusCode = 404; res.end();
+  });
+  try {
+    const p = { ...structuredClone(example.providers[0]), baseUrl: base };
+    p.match = { minScore: 0.8, yearTolerance: 1 };
+    const { best } = await scraper.search(p, { type: 'tv', title: 'The Office', year: '2005' });
+    assert.strictEqual(best.link, `${base}/serie/the-office`);
+    const ep = await scraper.episodeUrl(p, best.link, 2, 3);
+    assert.strictEqual(ep, `${base}/serie/the-office/saison-2/episode-3`);
+  } finally {
+    srv.close();
+  }
+});
+
+// ------------------------------------------------------------ Classifieur du résolveur
+
+test('classifier : détection et blocage', () => {
+  const c = createClassifier({ allowedHosts: ['cdn.player.net'] });
+  assert.strictEqual(c.detectStream('https://x.net/v/master.m3u8?token=1'), 'hls');
+  assert.strictEqual(c.detectStream('https://x.net/v/stream.mpd'), 'dash');
+  assert.strictEqual(c.detectStream('https://x.net/v/film.mp4#t=1'), 'mp4');
+  assert.strictEqual(c.detectStream('https://x.net/seg/001.ts'), null);
+  assert.strictEqual(c.detectStream('https://x.net/ads/preroll.mp4'), null);
+  assert.ok(c.shouldBlock('https://securepubads.g.doubleclick.net/x.js', 'script'));
+  assert.ok(c.shouldBlock('https://site.org/poster.jpg', 'image'));
+  assert.ok(!c.shouldBlock('https://cdn.player.net/poster.jpg', 'image'));
+  assert.ok(!c.isNavigationAllowed('https://autre-site.com/', 'www.site.org'));
+  assert.ok(c.isNavigationAllowed('https://player.site.org/', 'www.site.org'));
+  assert.ok(!c.isNavigationAllowed('intent://x', 'www.site.org'));
+});
+
+test('rank : HLS master > variantes > DASH > MP4', () => {
+  const r = rank([
+    { url: 'https://a/f.mp4', type: 'mp4', order: 0 },
+    { url: 'https://a/720/index-v1.m3u8', type: 'hls', order: 1 },
+    { url: 'https://a/v.mpd', type: 'dash', order: 2 },
+    { url: 'https://a/master.m3u8', type: 'hls', order: 3 },
+  ]);
+  assert.deepStrictEqual(r.map((x) => x.url.split('/').pop()), ['master.m3u8', 'index-v1.m3u8', 'v.mpd', 'f.mp4']);
+});
+
+// ------------------------------------------------------------ Dépôt de sources
+
+test('repository : abonnement, ETag, erreur conservant les sources, désactivation', async () => {
+  let version = 1;
+  let broken = false;
+  const { srv, base } = await serve((req, res) => {
+    const etag = `"v${version}"`;
+    if (broken) { res.statusCode = 500; return res.end(); }
+    if (req.headers['if-none-match'] === etag) { res.statusCode = 304; return res.end(); }
+    res.setHeader('ETag', etag);
+    res.setHeader('Content-Type', 'application/json');
+    const doc = structuredClone(example);
+    doc.name = `Liste v${version}`;
+    res.end(JSON.stringify(doc));
+  });
+  const dir = tmpDir();
+  try {
+    const repo = new SourceRepository(dir);
+    repo.load();
+    const sub = await repo.addSubscription(`${base}/sources.json`);
+    assert.strictEqual(sub.name, 'Liste v1');
+    assert.strictEqual(repo.activeProviders('movie').length, 1);
+
+    await repo.sync(sub.id); // 304
+    assert.strictEqual(repo.store.subscriptions[0].lastError, null);
+
+    version = 2;
+    await repo.sync(sub.id);
+    assert.strictEqual(repo.store.subscriptions[0].name, 'Liste v2');
+
+    broken = true;
+    await assert.rejects(repo.sync(sub.id));
+    assert.ok(repo.store.subscriptions[0].lastError);
+    assert.strictEqual(repo.store.subscriptions[0].providers.length, 1, 'les anciennes sources sont conservées');
+
+    await repo.setProviderEnabled('exemple', false);
+    assert.strictEqual(repo.activeProviders('movie').length, 0);
+
+    // Persistance
+    const again = new SourceRepository(dir);
+    again.load();
+    assert.strictEqual(again.store.subscriptions.length, 1);
+    assert.deepStrictEqual(again.store.disabledIds, ['exemple']);
+  } finally {
+    srv.close();
+  }
+});
+
+test('repository : une source locale remplace celle d\'une liste au même id', async () => {
+  const repo = new SourceRepository(tmpDir());
+  repo.load();
+  await repo.importDocument(JSON.stringify(example));
+  const local = { ...structuredClone(example.providers[0]), name: 'Ma version', priority: 90 };
+  await repo.upsertLocalProvider(local);
+  const entries = repo.entries();
+  assert.strictEqual(entries.length, 1);
+  assert.strictEqual(entries[0].provider.name, 'Ma version');
+  await assert.rejects(repo.upsertLocalProvider({ id: 'x' }), /invalide/);
+});
+
+// ------------------------------------------------------------ Serveur compagnon
+
+test('compagnon : page publique, API protégée par code', async () => {
+  const repo = new SourceRepository(tmpDir());
+  repo.load();
+  const companion = new CompanionServer(repo);
+  const info = await companion.start([18080, 18081, 18082, 18083]);
+  const base = `http://127.0.0.1:${info.port}`;
+  try {
+    const page = await fetch(`${base}/`);
+    assert.strictEqual(page.status, 200);
+    assert.match(await page.text(), /RR Streaming/);
+
+    assert.strictEqual((await fetch(`${base}/api/state`)).status, 401);
+
+    const h = { 'X-Pairing-Code': info.code, 'Content-Type': 'application/json' };
+    const ok = await fetch(`${base}/api/import`, { method: 'POST', headers: h, body: JSON.stringify(example) });
+    assert.strictEqual(ok.status, 200);
+    assert.strictEqual((await ok.json()).providers.length, 1);
+
+    const bad = await fetch(`${base}/api/providers`, { method: 'POST', headers: h, body: JSON.stringify({ id: 'x' }) });
+    assert.strictEqual(bad.status, 400);
+    assert.ok((await bad.json()).details.length > 0);
+
+    const toggled = await fetch(`${base}/api/providers/exemple/toggle`, { method: 'POST', headers: h, body: '{"enabled":false}' });
+    assert.strictEqual((await toggled.json()).providers[0].enabled, false);
+  } finally {
+    companion.stop();
+  }
+});
