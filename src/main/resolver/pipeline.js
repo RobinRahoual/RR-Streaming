@@ -38,10 +38,12 @@ async function resolveMedia(repo, media, { onProgress = () => {}, signal } = {})
         allowedHosts: provider.player.allowedHosts || [],
         extraHlsPattern: provider.player.extraHlsPattern || null,
         timeoutMs: provider.player.timeoutMs || 20000,
+        signal,
         onLog: (m) => console.log(`[resolver:${provider.id}] ${m}`),
       });
       return { stream, alternatives: all, provider: { id: provider.id, name: provider.name }, matchedTitle: best.title };
     } catch (err) {
+      if (signal && signal.aborted) throw new Error('Annulé');
       console.warn(`[resolver:${provider.id}]`, err.message);
       failures.push({ provider: provider.name, error: err.message });
       onProgress({ provider: provider.name, message: `Échec : ${err.message}`, failed: true });

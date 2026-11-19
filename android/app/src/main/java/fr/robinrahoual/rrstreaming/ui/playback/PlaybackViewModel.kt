@@ -15,6 +15,7 @@ import fr.robinrahoual.rrstreaming.resolver.PlaybackResolution
 import fr.robinrahoual.rrstreaming.resolver.ProviderFailure
 import fr.robinrahoual.rrstreaming.resolver.StreamCandidate
 import fr.robinrahoual.rrstreaming.resolver.StreamPlayerFactory
+import fr.robinrahoual.rrstreaming.resolver.StreamState
 import fr.robinrahoual.rrstreaming.sources.MediaRequest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +33,7 @@ sealed interface PlaybackUiState {
 }
 
 /**
- * Bouton « Lire » d'une fiche TMDB → TmdbSourceResolver → ExoPlayer.
+ * Bouton « Lire » d'une fiche TMDB → StreamPrefetcher (résultat préparé à l'ouverture de la fiche) → ExoPlayer.
  * Si le flux retenu est illisible, essaie automatiquement les autres flux détectés.
  *
  * Usage (fiche film) :
@@ -59,49 +60,70 @@ class PlaybackViewModel(app: Application) : AndroidViewModel(app) {
         })
     }
 
+    private var lastMedia: MediaRequest? = null
+    private var fromCache = false
+    private var refreshed = false
+    private var progressJob: Job? = null
+
     fun play(media: MediaRequest, title: String) {
         job?.cancel()
+        progressJob?.cancel()
         player.stop()
+        lastMedia = media
+        refreshed = false
         _state.value = PlaybackUiState.Resolving(title, "Recherche d'une source…")
-        job = viewModelScope.launch {
-            val result = rr.resolver.resolve(media) { p ->
-                _state.update { s ->
-                    if (s !is PlaybackUiState.Resolving) s
-                    else s.copy(
-                        status = "${p.provider} — ${p.message}",
-                        log = if (p.failed) s.log + "${p.provider} : ${p.message.removePrefix("Échec : ")}" else s.log,
-                    )
+        // Réutilise la recherche lancée à l'ouverture de la fiche (ou la démarre).
+        val flow = rr.prefetcher.prefetch(media, "page")
+        progressJob = viewModelScope.launch {
+            flow.collect { st ->
+                if (st is StreamState.Resolving && st.provider != null) _state.update { s ->
+                    if (s is PlaybackUiState.Resolving) s.copy(status = "${st.provider} — ${st.message}") else s
                 }
             }
-            when (result) {
-                is PlaybackResolution.Ready -> {
-                    alternatives = result.alternatives.ifEmpty { listOf(result.stream) }
-                    altIndex = 0
-                    current = title to result.providerName
-                    StreamPlayerFactory.play(getApplication(), player, alternatives[0])
-                    _state.value = PlaybackUiState.Playing(title, result.providerName)
-                }
-                PlaybackResolution.NoSources -> _state.value = PlaybackUiState.NoSources
-                is PlaybackResolution.Failed -> _state.value = PlaybackUiState.Error(
-                    title, "Aucune source n'a fourni de flux lisible.", result.failures,
-                )
+        }
+        job = viewModelScope.launch { resolveAndPlay(media, title, fresh = false) }
+    }
+
+    private suspend fun resolveAndPlay(media: MediaRequest, title: String, fresh: Boolean) {
+        val (result, cached) = rr.prefetcher.resolve(media, fresh)
+        progressJob?.cancel()
+        fromCache = cached
+        when (result) {
+            is PlaybackResolution.Ready -> {
+                alternatives = result.alternatives.ifEmpty { listOf(result.stream) }
+                altIndex = 0
+                current = title to result.providerName
+                StreamPlayerFactory.play(getApplication(), player, alternatives[0])
+                _state.value = PlaybackUiState.Playing(title, result.providerName)
             }
+            PlaybackResolution.NoSources -> _state.value = PlaybackUiState.NoSources
+            is PlaybackResolution.Failed -> _state.value = PlaybackUiState.Error(
+                title, "Aucune source n'a fourni de flux lisible.", result.failures,
+            )
         }
     }
 
     private fun tryNextStream(reason: String) {
         val (title, provider) = current ?: return
         altIndex++
-        if (altIndex < alternatives.size) {
-            StreamPlayerFactory.play(getApplication(), player, alternatives[altIndex])
-            _state.value = PlaybackUiState.Playing(title, provider)
-        } else {
-            _state.value = PlaybackUiState.Error(title, "Le flux trouvé n'a pas pu être lu ($reason).")
+        when {
+            altIndex < alternatives.size -> {
+                StreamPlayerFactory.play(getApplication(), player, alternatives[altIndex])
+                _state.value = PlaybackUiState.Playing(title, provider)
+            }
+            // Flux préparé à l'avance mais expiré (jeton) : une nouvelle recherche, une seule fois.
+            fromCache && !refreshed && lastMedia != null -> {
+                refreshed = true
+                _state.value = PlaybackUiState.Resolving(title, "Le flux préparé a expiré, nouvelle recherche…")
+                job = viewModelScope.launch { resolveAndPlay(lastMedia!!, title, fresh = true) }
+            }
+            else -> _state.value = PlaybackUiState.Error(title, "Le flux trouvé n'a pas pu être lu ($reason).")
         }
     }
 
     fun stop() {
         job?.cancel()
+        progressJob?.cancel()
         player.stop()
         _state.value = PlaybackUiState.Idle
     }

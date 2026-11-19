@@ -5,6 +5,7 @@ const App = (() => {
   const view = document.getElementById('view');
   const nav = document.getElementById('nav');
   let cleanup = null;
+  let routeToken = 0;
   let lastFocusSelector = null;
 
   const routes = [
@@ -30,7 +31,9 @@ const App = (() => {
     if (!match) { location.replace('#/home'); return; }
     const [re, render, tab] = match;
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.route === tab));
+    const my = ++routeToken;
     const result = await render(hash.match(re));
+    if (my !== routeToken) { if (typeof result === 'function') result(); return; } // page déjà quittée
     cleanup = result;
   }
 

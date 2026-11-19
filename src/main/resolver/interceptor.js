@@ -27,7 +27,9 @@ async function resolveStream(pageUrl, opts = {}) {
     extraHlsPattern = null,
     userAgent = DEFAULT_UA,
     onLog = () => {},
+    signal = null,
   } = opts;
+  if (signal && signal.aborted) throw new Error('Annulé');
 
   const classifier = createClassifier({ allowedHosts, extraHlsPattern });
   // Session éphémère dédiée : cookies isolés, aucun impact sur le reste de l'app.
@@ -107,6 +109,8 @@ async function resolveStream(pageUrl, opts = {}) {
     autoplayTimer = setTimeout(() => autoplay(n + 1), 1200);
   };
   wc.on('did-finish-load', () => autoplay());
+  const onAbort = () => failReject(new Error('Annulé'));
+  if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
   try {
     const extraHeaders = Object.entries({ ...headers, ...(referer ? { Referer: referer } : {}) })
@@ -119,6 +123,7 @@ async function resolveStream(pageUrl, opts = {}) {
     const all = rank(candidates.values());
     return { best: all[0], all };
   } finally {
+    if (signal) signal.removeEventListener('abort', onAbort);
     clearTimeout(autoplayTimer);
     ses.webRequest.onBeforeRequest(null);
     ses.webRequest.onBeforeSendHeaders(null);

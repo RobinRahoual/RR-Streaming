@@ -118,6 +118,7 @@ const UI = (() => {
     if (current && current !== node) current.classList.remove('focused');
     current = node;
     node.classList.add('focused');
+    node.dispatchEvent(new CustomEvent('rr-focus'));
     if (node.matches('input, select, textarea')) node.focus();
     else if (document.activeElement && document.activeElement.matches('input, select, textarea')) document.activeElement.blur();
     if (scroll) {

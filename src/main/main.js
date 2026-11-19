@@ -5,9 +5,10 @@ const { Settings } = require('./settings');
 const { Tmdb } = require('./tmdb');
 const { SourceRepository } = require('./sources/repository');
 const { CompanionServer } = require('./companion/server');
-const { resolveMedia } = require('./resolver/pipeline');
 const { installPlaybackHeaders } = require('./playback-headers');
 const { setupUpdater } = require('./updater');
+const { StreamCache } = require('./resolver/stream-cache');
+const { Availability } = require('./resolver/availability');
 const { renderHtml } = require('./resolver/page-renderer');
 const scraper = require('./sources/scraper');
 
@@ -18,7 +19,6 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   let win = null;
-  let resolving = null;
 
   app.on('second-instance', () => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
@@ -66,7 +66,13 @@ if (!app.requestSingleInstanceLock()) {
     const playback = installPlaybackHeaders(session.defaultSession, () => (win && !win.isDestroyed() ? win.webContents.id : -1));
     const updater = setupUpdater(send, () => settings.get().autoUpdate);
 
-    repo.on('change', () => send('sources:changed', repo.publicState()));
+    const streams = new StreamCache(repo, { emit: send });
+    const availability = new Availability(repo, { emit: send });
+    repo.on('change', () => {
+      send('sources:changed', repo.publicState());
+      streams.clear();
+      availability.clear();
+    });
     repo.syncIfStale().catch(() => {});
 
     // -------------------------------------------------------- IPC
@@ -95,20 +101,17 @@ if (!app.requestSingleInstanceLock()) {
     handle('companion:start', () => companion.start());
     handle('companion:stop', () => companion.stop());
 
-    handle('player:resolve', async (media) => {
-      if (resolving) resolving.abort();
-      const ctrl = new AbortController();
-      resolving = ctrl;
-      try {
-        const result = await resolveMedia(repo, media, { signal: ctrl.signal, onProgress: (p) => send('player:progress', p) });
-        if (ctrl.signal.aborted) throw new Error('Annulé');
-        playback.start(result.stream.headers);
-        return result;
-      } finally {
-        if (resolving === ctrl) resolving = null;
-      }
+    // Préchargement : démarré à l'ouverture d'une fiche, réutilisé par « Lire ».
+    handle('stream:prefetch', (media, slot) => streams.prefetch(media, slot));
+    handle('stream:status', (media) => streams.status(media));
+    handle('sources:availability', (list) => availability.check(Array.isArray(list) ? list.slice(0, 30) : []));
+
+    handle('player:resolve', async (media, opts) => {
+      const result = await streams.resolve(media, opts || {});
+      playback.start(result.stream.headers);
+      return result;
     });
-    handle('player:cancel', () => { if (resolving) resolving.abort(); });
+    handle('player:cancel', () => {}); // la résolution continue en arrière-plan : relancer « Lire » la reprend
     handle('player:stop', () => playback.stop());
 
     handle('updater:check', () => updater.check());

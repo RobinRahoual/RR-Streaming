@@ -18,6 +18,9 @@ const Player = (() => {
   let unsubscribe = null;
   let lastMedia = null;
   let lastDisplay = null;
+  let lastResult = null;
+  let refreshed = false;
+  const keyOf = (m) => `${m.type}:${m.tmdbId}:${m.season || 0}:${m.episode || 0}`;
 
   // ---------------------------------------------------------- Ouverture / fermeture
 
@@ -34,8 +37,10 @@ const Player = (() => {
     setLoading(display.title, 'Recherche d\'une source…');
     UI.focusFirst('#player [data-act="back"]');
 
+    const key = keyOf(media);
+    refreshed = false;
     unsubscribe = window.rr.player.onProgress((p) => {
-      if (my !== session) return;
+      if (my !== session || (p.key && p.key !== key)) return;
       $('.pl-status').textContent = `${p.provider} — ${p.message}`;
       if (p.failed) addLog(`${p.provider} : ${p.message.replace(/^Échec : /, '')}`, true);
     });
@@ -43,14 +48,36 @@ const Player = (() => {
     try {
       const res = await UI.call(window.rr.player.resolve(media));
       if (my !== session) return;
-      alternatives = res.alternatives && res.alternatives.length ? res.alternatives : [res.stream];
-      altIndex = 0;
-      $('.pc-source').textContent = res.provider.name;
-      $('.pl-status').textContent = `${res.provider.name} — Démarrage de la lecture…`;
-      attach(alternatives[0]);
+      start(res);
     } catch (err) {
       if (my !== session) return;
       showError(err);
+    }
+  }
+
+  function start(res) {
+    lastResult = res;
+    alternatives = res.alternatives && res.alternatives.length ? res.alternatives : [res.stream];
+    altIndex = 0;
+    $('.pc-source').textContent = res.provider.name;
+    $('.pl-status').textContent = `${res.provider.name} — Démarrage de la lecture…`;
+    attach(alternatives[0]);
+  }
+
+  /** Flux préchargé expiré (jeton) : une nouvelle recherche, une seule fois. */
+  async function refresh(reason) {
+    refreshed = true;
+    const my = session;
+    root.classList.remove('playing', 'is-playing');
+    destroyEngines();
+    loading.classList.remove('error');
+    $('.pl-status').textContent = 'Le flux préparé a expiré, nouvelle recherche…';
+    console.warn('[player] rafraîchissement :', reason);
+    try {
+      const res = await UI.call(window.rr.player.resolve(lastMedia, { fresh: true }));
+      if (my === session) start(res);
+    } catch (err) {
+      if (my === session) showError(err);
     }
   }
 
@@ -112,6 +139,8 @@ const Player = (() => {
     if (altIndex < alternatives.length) {
       addLog(`Flux ${altIndex} illisible, essai du suivant…`, true);
       attach(alternatives[altIndex]);
+    } else if (lastResult && lastResult.cached && !refreshed) {
+      refresh(reason);
     } else {
       root.classList.remove('playing');
       showError(new Error(`Le flux trouvé n'a pas pu être lu.\n${reason}`));

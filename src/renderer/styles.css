@@ -304,3 +304,30 @@ select.input { appearance: none; cursor: pointer; }
   .split { grid-template-columns: 1fr; }
   .panel { position: static; }
 }
+
+/* -------------------------------------------------- Préchargement du flux */
+.stream-status {
+  display: inline-flex; align-items: center; gap: 10px; margin-top: 18px; padding: 9px 16px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; color: var(--fg2); background: rgba(40,40,44,.55); backdrop-filter: blur(20px); border: 1px solid var(--hair);
+  animation: fade .3s var(--ease);
+}
+.stream-status:empty { display: none; }
+.stream-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); }
+.stream-status.ready { color: var(--fg); }
+.stream-status.ready .dot { background: var(--green); box-shadow: 0 0 10px rgba(48,209,88,.7); }
+.stream-status.failed .dot { background: #ff9f0a; }
+.stream-status .via { color: var(--fg3); font-weight: 500; }
+.stream-status .via::before { content: "·"; margin-right: 8px; }
+.mini-spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; animation: spin .8s linear infinite; }
+
+.card .avail-badge {
+  position: absolute; top: 10px; left: 10px; z-index: 2; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: rgba(20,20,22,.78); backdrop-filter: blur(12px); color: var(--fg2); animation: fade .3s var(--ease);
+}
+.card.available .avail-badge { background: rgba(48,209,88,.92); color: #04210c; }
+.card.unavailable .art img { filter: grayscale(.7) brightness(.55); transition: filter .3s; }
+.card.unavailable:hover .art img, .card.unavailable.focused .art img { filter: none; }
+.card.checking .art::before {
+  content: ""; position: absolute; top: 12px; left: 12px; z-index: 2; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; animation: spin .8s linear infinite;
+}

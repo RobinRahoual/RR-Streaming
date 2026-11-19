@@ -360,3 +360,78 @@ test('assistant : épisode absent de la page → message clair', () => {
   assert.throws(() => analyzeEpisodesHtml(html, 'https://a.org/anime/jjk', { showUrl: 'https://a.org/anime/jjk', episodeUrl: 'https://a.org/episode/1', season: 1, episode: 6 }),
     /n'apparaît pas sur la page de la série/);
 });
+
+// ------------------------------------------------------------ Préchargement des flux
+
+const { StreamCache } = require('../src/main/resolver/stream-cache');
+const { Availability } = require('../src/main/resolver/availability');
+
+function fakeResolver() {
+  const calls = [];
+  const resolve = (_repo, media, { signal, onProgress }) => {
+    const call = { media, signal, done: null };
+    calls.push(call);
+    return new Promise((res, rej) => {
+      onProgress({ provider: 'Test', message: 'Recherche du titre…' });
+      call.done = () => res({ stream: { url: `https://cdn/${media.tmdbId}.m3u8`, type: 'hls', headers: {} }, alternatives: [], provider: { id: 't', name: 'Test' } });
+      signal.addEventListener('abort', () => rej(new Error('Annulé')));
+    });
+  };
+  return { calls, resolve };
+}
+
+test('préchargement : la lecture réutilise la résolution lancée à l\'ouverture de la fiche', async () => {
+  const f = fakeResolver();
+  const events = [];
+  const cache = new StreamCache({}, { resolve: f.resolve, emit: (ch, d) => events.push([ch, d]) });
+  const dune = { type: 'movie', tmdbId: 1, title: 'Dune' };
+  assert.strictEqual(cache.prefetch(dune).status, 'resolving');
+  const playing = cache.resolve(dune); // « Lire » pendant la résolution : pas de deuxième recherche
+  assert.strictEqual(f.calls.length, 1);
+  f.calls[0].done();
+  const r = await playing;
+  assert.strictEqual(r.stream.url, 'https://cdn/1.m3u8');
+  assert.strictEqual(r.cached, false);
+  assert.ok(events.some(([ch, d]) => ch === 'stream:status' && d.status === 'ready' && d.provider === 'Test'));
+
+  // Deuxième « Lire » : instantané, depuis le cache
+  const again = await cache.resolve(dune);
+  assert.strictEqual(again.cached, true);
+  assert.strictEqual(f.calls.length, 1);
+  // Flux illisible : nouvelle résolution forcée
+  const freshP = cache.resolve(dune, { fresh: true });
+  assert.strictEqual(f.calls.length, 2);
+  f.calls[1].done();
+  assert.strictEqual((await freshP).cached, false);
+});
+
+test('préchargement : ouvrir une autre fiche annule la recherche précédente, sauf si le lecteur l\'attend', async () => {
+  const f = fakeResolver();
+  const cache = new StreamCache({}, { resolve: f.resolve });
+  cache.prefetch({ type: 'movie', tmdbId: 1 });
+  cache.prefetch({ type: 'movie', tmdbId: 2 });
+  assert.strictEqual(f.calls[0].signal.aborted, true);
+  assert.strictEqual(cache.status({ type: 'movie', tmdbId: 1 }).status, 'idle');
+
+  const waited = cache.resolve({ type: 'movie', tmdbId: 2 });
+  cache.prefetch({ type: 'movie', tmdbId: 3 });
+  assert.strictEqual(f.calls[1].signal.aborted, false, 'le lecteur attend ce flux');
+  f.calls[1].done();
+  await waited;
+});
+
+test('disponibilité : résultats au fil de l\'eau et cache', async () => {
+  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie', 'tv'] }] };
+  const results = [];
+  let searches = 0;
+  const av = new Availability(repo, {
+    emit: (_ch, d) => results.push(d),
+    search: async (_p, media) => { searches++; return { best: media.title === 'Dune' ? { link: 'x' } : null }; },
+  });
+  av.check([{ type: 'movie', tmdbId: 1, title: 'Dune' }, { type: 'movie', tmdbId: 2, title: 'Inconnu' }]);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepStrictEqual(results.map((r) => [r.key, r.available]).sort(), [['movie:1', true], ['movie:2', false]]);
+  av.check([{ type: 'movie', tmdbId: 1, title: 'Dune' }]);
+  assert.strictEqual(searches, 2, 'servi depuis le cache');
+  assert.strictEqual(new Availability({ activeProviders: () => [] }).check([{ type: 'movie', tmdbId: 1 }]), 0);
+});

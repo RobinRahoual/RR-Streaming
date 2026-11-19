@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('rr', {
     toggleProvider: (id, enabled) => ipcRenderer.invoke('sources:toggleProvider', id, enabled),
     importDocument: (raw) => ipcRenderer.invoke('sources:import', raw),
     onChange: on('sources:changed'),
+    availability: (list) => ipcRenderer.invoke('sources:availability', list),
+    onAvailability: on('availability:result'),
   },
 
   companion: {
@@ -34,8 +36,14 @@ contextBridge.exposeInMainWorld('rr', {
     stop: () => ipcRenderer.invoke('companion:stop'),
   },
 
+  stream: {
+    prefetch: (media, slot) => ipcRenderer.invoke('stream:prefetch', media, slot),
+    status: (media) => ipcRenderer.invoke('stream:status', media),
+    onStatus: on('stream:status'),
+  },
+
   player: {
-    resolve: (media) => ipcRenderer.invoke('player:resolve', media),
+    resolve: (media, opts) => ipcRenderer.invoke('player:resolve', media, opts),
     cancel: () => ipcRenderer.invoke('player:cancel'),
     stop: () => ipcRenderer.invoke('player:stop'),
     onProgress: on('player:progress'),

@@ -25,19 +25,41 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Lecture
 
+  const movieMedia = (m) => ({ tmdbId: m.id, type: 'movie', title: m.title, originalTitle: m.original_title, year: yearOf(m) });
+  const episodeMedia = (s, season, episode) => ({ tmdbId: s.id, type: 'tv', title: s.name, originalTitle: s.original_name, year: yearOf(s), season, episode });
+  const itemMedia = (it) => ({ tmdbId: it.id, type: it.media_type, title: it.title || it.name, originalTitle: it.original_title || it.original_name, year: yearOf(it) });
+  const streamKey = (m) => `${m.type}:${m.tmdbId}:${m.season || 0}:${m.episode || 0}`;
+
   function playMovie(m) {
-    Player.open(
-      { tmdbId: m.id, type: 'movie', title: m.title, originalTitle: m.original_title, year: yearOf(m) },
-      { title: m.title, backdrop: img(m.backdrop_path, 'w1280') },
-    );
+    Player.open(movieMedia(m), { title: m.title, backdrop: img(m.backdrop_path, 'w1280') });
   }
 
   function playEpisode(show, season, episode, epName) {
     store.set(`rr.lastEp.${show.id}`, { season, episode });
     Player.open(
-      { tmdbId: show.id, type: 'tv', title: show.name, originalTitle: show.original_name, year: yearOf(show), season, episode },
+      episodeMedia(show, season, episode),
       { title: `${show.name} · S${season} É${episode}${epName ? ` · ${epName}` : ''}`, backdrop: img(show.backdrop_path, 'w1280') },
     );
+  }
+
+  /**
+   * Lance la recherche du flux dès l'ouverture de la fiche et affiche son état sous « Lire ».
+   * « Lire » réutilise ensuite ce résultat (ou attend la recherche en cours).
+   */
+  function streamStatus(media) {
+    const node = el('div', { class: 'stream-status' });
+    const key = streamKey(media);
+    const render = (st) => {
+      node.className = `stream-status ${st.status}`;
+      if (st.status === 'resolving') node.replaceChildren(el('span', { class: 'mini-spinner' }), 'Recherche d\'une source…');
+      else if (st.status === 'ready') node.replaceChildren(el('span', { class: 'dot' }), 'Prêt à lire', el('span', { class: 'via' }, st.provider));
+      else if (st.status === 'failed') {
+        node.replaceChildren(el('span', { class: 'dot' }), st.code === 'NO_SOURCES' ? 'Aucune source active' : 'Aucune source n\'a trouvé ce titre');
+      } else node.replaceChildren();
+    };
+    const off = window.rr.stream.onStatus((st) => { if (st.key === key) render(st); });
+    call(window.rr.stream.prefetch(media, 'page')).then(render).catch(() => {});
+    return { node, stop: off };
   }
 
   // ---------------------------------------------------------- États communs
@@ -191,6 +213,18 @@ const Views = (() => {
 
     let timer = null;
     let token = 0;
+    let cardsByKey = new Map();
+    // Disponibilité sur les sources, affichée sur chaque affiche au fil des réponses.
+    const offAvail = window.rr.sources.onAvailability((r) => {
+      const card = cardsByKey.get(r.key);
+      if (!card) return;
+      card.classList.remove('checking');
+      card.classList.add(r.available ? 'available' : 'unavailable');
+      const art = card.querySelector('.art');
+      art.querySelectorAll('.avail-badge').forEach((b) => b.remove());
+      art.append(el('div', { class: 'avail-badge' }, r.available ? 'Disponible' : 'Introuvable'));
+      if (r.available) card.title = `Disponible sur ${r.provider}`;
+    });
     const run = async () => {
       const q = input.value.trim();
       lastQuery = q;
@@ -200,7 +234,20 @@ const Views = (() => {
         const data = await tmdb('/search/multi', { query: q, include_adult: 'false' });
         if (my !== token) return;
         const items = (data.results || []).filter((x) => x.media_type === 'movie' || x.media_type === 'tv');
-        results.replaceChildren(...(items.length ? items.map((it) => posterCard(it, openItem(it))) : [el('p', { class: 'page-sub' }, 'Aucun résultat.')]));
+        cardsByKey = new Map();
+        const cards = items.map((it) => {
+          const card = posterCard(it, openItem(it));
+          card.classList.add('checking');
+          cardsByKey.set(`${it.media_type}:${it.id}`, card);
+          return card;
+        });
+        results.replaceChildren(...(items.length ? cards : [el('p', { class: 'page-sub' }, 'Aucun résultat.')]));
+        if (items.length) {
+          call(window.rr.sources.availability(items.slice(0, 20).map(itemMedia))).then((n) => {
+            if (!n) cards.forEach((c) => c.classList.remove('checking'));
+          }).catch(() => cards.forEach((c) => c.classList.remove('checking')));
+          cards.slice(20).forEach((c) => c.classList.remove('checking'));
+        }
       } catch (err) {
         if (my === token) results.replaceChildren(errorPage(err));
       }
@@ -208,12 +255,12 @@ const Views = (() => {
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 320); });
     if (lastQuery) run();
     UI.setFocus(input, { scroll: false });
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); offAvail(); };
   }
 
   // ---------------------------------------------------------- Fiches
 
-  function detailShell(item, { kicker, metaParts, buttons }) {
+  function detailShell(item, { kicker, metaParts, buttons, status = null }) {
     const genres = (item.genres || []).map((g) => g.name).join(' · ');
     return el('section', { class: 'hero' },
       el('div', { class: 'hero-bg', style: { backgroundImage: item.backdrop_path ? `url("${img(item.backdrop_path, 'original')}")` : '' } }),
@@ -223,7 +270,8 @@ const Views = (() => {
         el('div', { class: 'hero-meta' }, metaParts.filter(Boolean).flatMap((p, k) => (k ? [el('span', {}, '·'), p] : [p]))),
         genres ? el('div', { class: 'genres' }, genres) : null,
         el('p', { class: 'hero-overview', style: { WebkitLineClamp: 5 } }, item.overview || 'Aucun synopsis disponible.'),
-        el('div', { class: 'hero-actions' }, buttons)));
+        el('div', { class: 'hero-actions' }, buttons),
+        status));
   }
 
   function castRow(credits) {
@@ -240,9 +288,11 @@ const Views = (() => {
       const m = await tmdb(`/movie/${id}`, { append_to_response: 'credits,recommendations' });
       const runtime = m.runtime ? `${Math.floor(m.runtime / 60)} h ${String(m.runtime % 60).padStart(2, '0')}` : null;
       const resume = store.get(`rr.progress.${m.id}.0.0`);
+      const status = streamStatus(movieMedia(m));
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(m, {
           kicker: 'Film',
+          status: status.node,
           metaParts: [yearOf(m), runtime, m.vote_average ? el('span', { class: 'rating' }, `★ ${m.vote_average.toFixed(1)}`) : null],
           buttons: [
             el('button', { class: 'pill white', 'data-focus': true, onclick: () => playMovie(m) }, ICON_PLAY(), resume > 30 ? 'Reprendre' : 'Lire'),
@@ -253,10 +303,12 @@ const Views = (() => {
           castRow(m.credits),
           row('Vous aimerez aussi', ((m.recommendations && m.recommendations.results) || []).map((it) => posterCard(it, openItem(it, 'movie')))))));
       UI.focusFirst('.hero-actions [data-focus]');
+      return () => status.stop();
     } catch (err) {
       view.replaceChildren(errorPage(err));
       UI.focusFirst();
     }
+    return null;
   }
 
   async function tvDetail(view, id) {
@@ -270,6 +322,13 @@ const Views = (() => {
 
       const seasonBar = el('div', { class: 'seasons' });
       const episodesWrap = el('div');
+      const status = streamStatus(episodeMedia(s, start.season, start.episode));
+      // Survol / focus d'un épisode : on prépare aussi son flux.
+      let hoverTimer = null;
+      const prepare = (num, epNum) => {
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => window.rr.stream.prefetch(episodeMedia(s, num, epNum), 'hover'), 700);
+      };
 
       const loadSeason = async (num) => {
         [...seasonBar.children].forEach((b) => b.classList.toggle('active', Number(b.dataset.season) === num));
@@ -277,7 +336,12 @@ const Views = (() => {
         try {
           const data = await tmdb(`/tv/${s.id}/season/${num}`);
           const cards = (data.episodes || []).map((ep) => {
-            const card = el('div', { class: 'card episode', 'data-focus': true, tabindex: -1, onclick: () => playEpisode(s, num, ep.episode_number, ep.name) },
+            const card = el('div', {
+              class: 'card episode', 'data-focus': true, tabindex: -1,
+              onclick: () => playEpisode(s, num, ep.episode_number, ep.name),
+              onmouseenter: () => prepare(num, ep.episode_number),
+              'onrr-focus': () => prepare(num, ep.episode_number),
+            },
               el('div', { class: 'art' },
                 ep.still_path ? el('img', { src: img(ep.still_path, 'w500'), alt: '', loading: 'lazy' }) : el('div', { class: 'fallback' }, `Épisode ${ep.episode_number}`),
                 el('div', { class: 'glare' })),
@@ -298,6 +362,7 @@ const Views = (() => {
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(s, {
           kicker: 'Série',
+          status: status.node,
           metaParts: [
             yearOf(s),
             s.number_of_seasons ? `${s.number_of_seasons} saison${s.number_of_seasons > 1 ? 's' : ''}` : null,
@@ -315,10 +380,12 @@ const Views = (() => {
           row('Vous aimerez aussi', ((s.recommendations && s.recommendations.results) || []).map((it) => posterCard(it, openItem(it, 'tv')))))));
       if (seasons.length) loadSeason(seasons.some((x) => x.season_number === start.season) ? start.season : seasons[0].season_number);
       UI.focusFirst('.hero-actions [data-focus]');
+      return () => { status.stop(); clearTimeout(hoverTimer); };
     } catch (err) {
       view.replaceChildren(errorPage(err));
       UI.focusFirst();
     }
+    return null;
   }
 
   // ---------------------------------------------------------- Sources

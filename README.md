@@ -27,6 +27,10 @@ Catalogue TMDB ──► Fiche (film / épisode) ──► Lire
            5. lecture HLS (hls.js), DASH (dash.js) ou MP4, headers rejoués sur chaque segment
 ```
 
+### Préparation du flux
+
+Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« Recherche d'une source… » puis « Prêt à lire · source ») : le bouton « Lire » démarre alors presque instantanément. Pour une série, l'épisode proposé par « Lire » est préparé, ainsi que l'épisode survolé. Dans la recherche, chaque résultat indique s'il est **Disponible** ou **Introuvable** sur vos sources. Un flux préparé reste valable 8 minutes ; s'il a expiré entre-temps, il est recherché à nouveau automatiquement.
+
 ### Ajouter une source (assistant)
 
 Onglet **Sources → + Ajouter une source** (ou depuis le téléphone via le QR code). L'assistant se fait en cinq étapes, sans JSON ni CSS :

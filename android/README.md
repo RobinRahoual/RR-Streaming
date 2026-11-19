@@ -28,6 +28,29 @@ vm.play(MediaRequest(tmdbId = show.id, type = MediaKind.TV, title = show.name, o
 // Resolving(status, log) pendant la recherche ; NoSources → ouvrir l'onglet Sources.
 ```
 
+## Préparer le flux dès l'ouverture d'une fiche
+
+La recherche du flux démarre quand la fiche s'ouvre ; « Lire » réutilise le résultat (ou attend la recherche en cours).
+
+```kotlin
+val rr = LocalContext.current.applicationContext as RRStreamingApp
+val media = remember(movie.id) { MediaRequest(movie.id, MediaKind.MOVIE, movie.title, movie.originalTitle, movie.releaseYear) }
+val stream by remember(media) { rr.prefetcher.prefetch(media) }.collectAsState()
+
+when (val st = stream) {
+    is StreamState.Resolving -> Text("Recherche d'une source…")
+    is StreamState.Ready -> Text("Prêt à lire · ${st.resolution.providerName}")
+    StreamState.NoSources -> Text("Aucune source active")
+    is StreamState.Failed -> Text("Aucune source n'a trouvé ce titre")
+    StreamState.Idle -> Unit
+}
+// Bouton Lire : vm.play(media, movie.title) → démarrage quasi immédiat si le flux est prêt.
+// Épisode survolé : rr.prefetcher.prefetch(episodeMedia, slot = "hover")
+```
+
+Résultats de recherche : `rr.availability.check(medias)` puis `rr.availability.results.collectAsState()`
+(clé `"movie:<tmdbId>"` / `"tv:<tmdbId>"` → `available`, `provider`).
+
 ## Chaîne de résolution
 
 `TmdbSourceResolver` essaie chaque source active par priorité :
