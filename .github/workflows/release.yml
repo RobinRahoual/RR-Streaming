@@ -23,43 +23,45 @@ jobs:
 
       - run: npm test
 
-      - name: Vérifier que la version du tag correspond à package.json
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Préparer le tag de version
+        id: tag
         shell: bash
-        run: |
-          PKG="v$(node -p "require('./package.json').version")"
-          if [ "$PKG" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::Le tag ${GITHUB_REF_NAME} ne correspond pas à package.json ($PKG)"; exit 1
-          fi
-
-      - name: Créer le tag de version (lancement manuel)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          TAG="v$(node -p "require('./package.json').version")"
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-            echo "::error::Le tag $TAG existe déjà : augmentez la version dans package.json"; exit 1
-          fi
-          git tag "$TAG"
-          git push origin "$TAG"
-
-      - name: Construire l'installateur et l'envoyer dans une release brouillon
-        run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          PUBLISHED=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" -q "[.[] | select(.tag_name == \"$TAG\" and (.draft | not))] | length")
+          if [ "$PUBLISHED" != "0" ]; then
+            echo "::error::La release $TAG est déjà publiée : augmentez la version dans package.json"; exit 1
+          fi
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
-      # La release n'est rendue publique qu'une fois l'installateur et latest.yml envoyés :
-      # les installations existantes ne voient jamais une release incomplète.
+      - name: Construire l'installateur
+        run: npx electron-builder --win --publish never
+
+      # Une seule création de release, avec tous les fichiers : les installations existantes
+      # (electron-updater lit latest.yml) ne voient jamais une release incomplète.
       - name: Publier la release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="v$(node -p "require('./package.json').version")"
-          gh release view "$TAG" --json assets -q '.assets[].name' | tee assets.txt
-          grep -q '^latest.yml$' assets.txt || { echo "::error::latest.yml manquant"; exit 1; }
-          grep -q '\.exe$' assets.txt || { echo "::error::installateur manquant"; exit 1; }
-          gh release edit "$TAG" --draft=false --latest
+          ls -la dist
+          test -f dist/latest.yml || { echo "::error::dist/latest.yml manquant"; exit 1; }
+          VERSION="${TAG#v}"
+          EXE="dist/RR-Streaming-Setup-$VERSION.exe"
+          test -f "$EXE" || { echo "::error::$EXE manquant"; exit 1; }
+          FILES=("$EXE" dist/latest.yml)
+          [ -f "$EXE.blockmap" ] && FILES+=("$EXE.blockmap")
+          gh release create "$TAG" "${FILES[@]}" \
+            --title "RR Streaming $VERSION" \
+            --notes "Installateur Windows : **RR-Streaming-Setup-$VERSION.exe**. Les installations existantes se mettent à jour automatiquement." \
+            --latest
 
       - uses: actions/upload-artifact@v4
         with:
