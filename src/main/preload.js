@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('rr', {
     importDocument: (raw) => ipcRenderer.invoke('sources:import', raw),
     onChange: on('sources:changed'),
     availability: (list) => ipcRenderer.invoke('sources:availability', list),
+    cancelAvailability: () => ipcRenderer.invoke('sources:availabilityCancel'),
     onAvailability: on('availability:result'),
   },
 

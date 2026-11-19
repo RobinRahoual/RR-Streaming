@@ -25,26 +25,35 @@ class SourceScraper(
     data class SearchOutcome(val results: List<SearchResult>, val best: ScoredResult?)
     data class PlayerPage(val url: String, val referer: String?)
 
-    /** Cherche le média sur la source et renvoie le meilleur résultat (ou null). */
+    /**
+     * Cherche le média sur la source et renvoie le meilleur résultat (ou null).
+     * Essaie le titre, puis le titre original s'il diffère (beaucoup de sites indexent les films sous leur titre original).
+     */
     suspend fun search(provider: SourceProvider, media: MediaRequest): SearchOutcome {
         val s = provider.search
-        val query = fill(
+        fun queryFor(title: String) = fill(
             s.query,
             mapOf(
-                "title" to media.title,
+                "title" to title,
                 "originalTitle" to (media.originalTitle ?: media.title),
                 "year" to (media.year?.toString() ?: ""),
                 "type" to if (media.type == MediaKind.TV) "tv" else "movie",
             ),
-        ).trim()
-        val url = fill(s.url, mapOf("baseUrl" to provider.baseUrl.trimEnd('/'), "query" to encode(query)))
-        val doc = fetch(url, provider.headers, provider.render)
-        val results = doc.select(s.item).mapNotNull { el ->
-            val title = extract(el, s.title) ?: return@mapNotNull null
-            val link = extract(el, s.link) ?: return@mapNotNull null
-            SearchResult(title, link, extract(el, s.year))
+        ).replace(Regex("\\s+"), " ").trim()
+        val queries = listOfNotNull(queryFor(media.title), media.originalTitle?.let { queryFor(it) }).distinct()
+
+        val all = mutableListOf<SearchResult>()
+        for (query in queries) {
+            val url = fill(s.url, mapOf("baseUrl" to provider.baseUrl.trimEnd('/'), "query" to encode(query)))
+            val doc = fetch(url, provider.headers, provider.render)
+            doc.select(s.item).forEach { el ->
+                val title = extract(el, s.title) ?: return@forEach
+                val link = extract(el, s.link) ?: return@forEach
+                if (all.none { it.link == link }) all += SearchResult(title, link, extract(el, s.year))
+            }
+            TitleMatcher.pickBest(all, media, provider.match)?.let { return SearchOutcome(all, it) }
         }
-        return SearchOutcome(results, TitleMatcher.pickBest(results, media, provider.match))
+        return SearchOutcome(all, null)
     }
 
     /** URL de la page de l'épisode pour une série. */

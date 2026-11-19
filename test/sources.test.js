@@ -435,3 +435,57 @@ test('disponibilité : résultats au fil de l\'eau et cache', async () => {
   assert.strictEqual(searches, 2, 'servi depuis le cache');
   assert.strictEqual(new Availability({ activeProviders: () => [] }).check([{ type: 'movie', tmdbId: 1 }]), 0);
 });
+
+test('correspondance : titres de films avec année, langue ou qualité', () => {
+  const m = { minScore: 0.8, yearTolerance: 1 };
+  const ok = (t, y, r, ry) => !!scraper.pickBest([{ title: r, link: 'x', year: ry }], { title: t, year: y }, m);
+  assert.ok(ok('Dune', '2021', 'Dune (2021)'));
+  assert.ok(ok('Oppenheimer', '2023', 'Oppenheimer en streaming VF HD', '2023'));
+  assert.ok(ok('Les Misérables', '2019', 'Les Misérables (2019) - Film complet'));
+  assert.ok(!ok('Dune', '2021', 'Dune (1984)'), 'année du titre prise en compte');
+  assert.ok(!ok('Up', '2009', 'Up in the Air', '2009'));
+  assert.ok(!ok('Alien', '1979', 'Alien Romulus', '2024'));
+});
+
+test('recherche : essaie le titre original si le titre français ne donne rien', async () => {
+  const { srv, base } = await serve((req, res) => {
+    const q = new URL(req.url, 'http://x').searchParams.get('q');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(q === 'The Matrix' ? '<article class="card"><h3>The Matrix (1999)</h3><a href="/film/matrix">x</a></article>' : '<p>Aucun résultat</p>');
+  });
+  try {
+    const p = { id: 'en', name: 'EN', baseUrl: base, headers: {}, match: { minScore: 0.8, yearTolerance: 1 },
+      search: { url: '{baseUrl}/s?q={query}', item: 'article.card', title: { css: 'h3' }, link: { css: 'a', attr: 'href' } } };
+    const r = await scraper.search(p, { type: 'movie', title: 'Matrix', originalTitle: 'The Matrix', year: '1999' });
+    assert.ok(r.best && r.best.link.endsWith('/film/matrix'));
+    assert.strictEqual(r.query, 'The Matrix');
+  } finally {
+    srv.close();
+  }
+});
+
+test('mémoire des correspondances : la disponibilité alimente la lecture', async () => {
+  const { MatchMemory } = require('../src/main/resolver/match-memory');
+  const matches = new MatchMemory();
+  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie'] }] };
+  const av = new Availability(repo, { matches, search: async () => ({ best: { link: 'https://a/film/dune', title: 'Dune' } }) });
+  av.check([{ type: 'movie', tmdbId: 7, title: 'Dune' }]);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepStrictEqual(matches.get({ type: 'movie', tmdbId: 7 }).link, 'https://a/film/dune');
+
+  let received = null;
+  const cache = new StreamCache({}, { matches, resolve: (_r, _m, opts) => { received = opts.matches; return new Promise(() => {}); } });
+  cache.prefetch({ type: 'movie', tmdbId: 7 });
+  assert.strictEqual(received, matches);
+});
+
+test('préchargement : ouvrir une fiche arrête la préparation en survol d\'un autre titre', () => {
+  const f = fakeResolver();
+  const cache = new StreamCache({}, { resolve: f.resolve });
+  cache.prefetch({ type: 'movie', tmdbId: 1 }, 'hover');
+  cache.prefetch({ type: 'movie', tmdbId: 2 }, 'page');
+  assert.strictEqual(f.calls[0].signal.aborted, true);
+  cache.prefetch({ type: 'movie', tmdbId: 3 }, 'hover');
+  cache.prefetch({ type: 'movie', tmdbId: 3 }, 'page');
+  assert.strictEqual(f.calls[2].signal.aborted, false, 'même titre : la préparation continue');
+});

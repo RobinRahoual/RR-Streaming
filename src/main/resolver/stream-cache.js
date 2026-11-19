@@ -23,8 +23,9 @@ function publicStatus(e) {
 }
 
 class StreamCache {
-  constructor(repo, { emit = () => {}, ttlMs = 8 * 60 * 1000, failTtlMs = 60 * 1000, resolve = defaultResolve } = {}) {
+  constructor(repo, { emit = () => {}, ttlMs = 8 * 60 * 1000, failTtlMs = 60 * 1000, resolve = defaultResolve, matches = null } = {}) {
     this.repo = repo;
+    this.matches = matches;
     this.emit = emit;
     this.ttl = ttlMs;
     this.failTtl = failTtlMs;
@@ -47,6 +48,15 @@ class StreamCache {
       if (pe && pe.status === 'resolving' && pe.wanted === 0 && ![...this.slots.entries()].some(([s, k]) => s !== slot && k === prev)) this.#cancel(pe);
     }
     this.slots.set(slot, key);
+    // Ouverture d'une fiche : les préparations en survol d'autres titres n'ont plus d'intérêt.
+    if (slot === 'page') {
+      for (const [other, k] of [...this.slots.entries()]) {
+        if (other === 'page' || k === key) continue;
+        const oe = this.entries.get(k);
+        if (oe && oe.status === 'resolving' && oe.wanted === 0) this.#cancel(oe);
+        this.slots.delete(other);
+      }
+    }
     let e = this.entries.get(key);
     if (!e || !this.#usable(e)) e = this.#start(media);
     return publicStatus(e);
@@ -89,6 +99,7 @@ class StreamCache {
     const e = { key, media, status: 'resolving', ctrl, wanted: 0, progress: [], result: null, error: null, doneAt: 0 };
     e.promise = this.resolveImpl(this.repo, media, {
       signal: ctrl.signal,
+      matches: this.matches,
       onProgress: (p) => {
         e.progress.push(p);
         this.emit('player:progress', { key, ...p });

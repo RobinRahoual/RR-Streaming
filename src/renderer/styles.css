@@ -325,6 +325,7 @@ select.input { appearance: none; cursor: pointer; }
   background: rgba(20,20,22,.78); backdrop-filter: blur(12px); color: var(--fg2); animation: fade .3s var(--ease);
 }
 .card.available .avail-badge { background: rgba(48,209,88,.92); color: #04210c; }
+.card.ready .avail-badge { background: #fff; color: #000; }
 .card.unavailable .art img { filter: grayscale(.7) brightness(.55); transition: filter .3s; }
 .card.unavailable:hover .art img, .card.unavailable.focused .art img { filter: none; }
 .card.checking .art::before {

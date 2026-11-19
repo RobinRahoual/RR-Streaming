@@ -21,7 +21,7 @@ async function resolveStream(pageUrl, opts = {}) {
   const {
     referer = null,
     headers = {},
-    timeoutMs = 20000,
+    timeoutMs = 30000,
     settleMs = 1500,
     allowedHosts = [],
     extraHlsPattern = null,

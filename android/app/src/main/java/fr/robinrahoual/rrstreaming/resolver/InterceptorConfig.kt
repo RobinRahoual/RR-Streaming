@@ -2,7 +2,7 @@ package fr.robinrahoual.rrstreaming.resolver
 
 data class InterceptorConfig(
     /** Durée max pour obtenir un premier flux. */
-    val timeoutMs: Long = 20_000,
+    val timeoutMs: Long = 30_000,
     /** Après le premier flux détecté, délai pendant lequel on continue à collecter (master vs variantes). */
     val settleMs: Long = 1_500,
     /** UA forcé. null = UA par défaut de la WebView. */

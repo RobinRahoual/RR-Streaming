@@ -9,6 +9,7 @@ const { installPlaybackHeaders } = require('./playback-headers');
 const { setupUpdater } = require('./updater');
 const { StreamCache } = require('./resolver/stream-cache');
 const { Availability } = require('./resolver/availability');
+const { MatchMemory } = require('./resolver/match-memory');
 const { renderHtml } = require('./resolver/page-renderer');
 const scraper = require('./sources/scraper');
 
@@ -66,12 +67,14 @@ if (!app.requestSingleInstanceLock()) {
     const playback = installPlaybackHeaders(session.defaultSession, () => (win && !win.isDestroyed() ? win.webContents.id : -1));
     const updater = setupUpdater(send, () => settings.get().autoUpdate);
 
-    const streams = new StreamCache(repo, { emit: send });
-    const availability = new Availability(repo, { emit: send });
+    const matches = new MatchMemory();
+    const streams = new StreamCache(repo, { emit: send, matches });
+    const availability = new Availability(repo, { emit: send, matches });
     repo.on('change', () => {
       send('sources:changed', repo.publicState());
       streams.clear();
       availability.clear();
+      matches.clear();
     });
     repo.syncIfStale().catch(() => {});
 
@@ -105,6 +108,7 @@ if (!app.requestSingleInstanceLock()) {
     handle('stream:prefetch', (media, slot) => streams.prefetch(media, slot));
     handle('stream:status', (media) => streams.status(media));
     handle('sources:availability', (list) => availability.check(Array.isArray(list) ? list.slice(0, 30) : []));
+    handle('sources:availabilityCancel', () => availability.cancel());
 
     handle('player:resolve', async (media, opts) => {
       const result = await streams.resolve(media, opts || {});

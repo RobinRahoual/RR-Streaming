@@ -63,6 +63,13 @@ class StreamPrefetcher(
         slots.put(slot, key)?.takeIf { it != key && it !in slots.values }?.let { prev ->
             entries[prev]?.takeIf { it.state.value is StreamState.Resolving && it.waiters == 0 }?.let { cancel(it) }
         }
+        if (slot == "page") {
+            // Ouverture d'une fiche : les préparations en survol d'autres titres n'ont plus d'intérêt.
+            slots.entries.filter { it.key != "page" && it.value != key }.forEach { (other, k) ->
+                entries[k]?.takeIf { it.state.value is StreamState.Resolving && it.waiters == 0 }?.let { cancel(it) }
+                slots.remove(other)
+            }
+        }
         val e = entries[key]?.takeIf { usable(it) } ?: start(media)
         return e.state.asStateFlow()
     }
@@ -131,6 +138,8 @@ class AvailabilityChecker(
     private val repo: SourceRepository,
     private val scraper: SourceScraper,
     private val scope: CoroutineScope,
+    /** Les titres trouvés ici sont réutilisés par la lecture (pas de nouvelle recherche). */
+    private val matches: MatchMemory? = null,
     private val ttlMs: Long = 30 * 60_000,
     concurrency: Int = 2,
 ) {
@@ -164,12 +173,19 @@ class AvailabilityChecker(
         }
     }
 
+    /** Quitter la recherche : les vérifications en cours sont abandonnées. */
+    fun cancel() { job?.cancel() }
+
     fun clear() { cache.clear(); results.value = emptyMap() }
 
     private suspend fun lookup(media: MediaRequest): Result {
         for (p in repo.store.value.activeProviders(media.type)) {
             try {
-                if (scraper.search(p, media).best != null) return Result(true, p.name)
+                val best = scraper.search(p, media).best
+                if (best != null) {
+                    matches?.remember(media, p.id, best.result.link, best.result.title)
+                    return Result(true, p.name)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) { /* source injoignable : suivante */ }

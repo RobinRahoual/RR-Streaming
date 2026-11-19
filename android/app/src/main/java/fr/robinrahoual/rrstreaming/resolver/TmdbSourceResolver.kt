@@ -6,6 +6,7 @@ import fr.robinrahoual.rrstreaming.sources.MediaRequest
 import fr.robinrahoual.rrstreaming.sources.SourceProvider
 import fr.robinrahoual.rrstreaming.sources.SourceRepository
 import fr.robinrahoual.rrstreaming.sources.SourceScraper
+import fr.robinrahoual.rrstreaming.sources.SearchResult
 import fr.robinrahoual.rrstreaming.sources.activeProviders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -46,6 +47,8 @@ class TmdbSourceResolver(
     private val repo: SourceRepository,
     private val scraper: SourceScraper,
     private val interceptorFactory: (InterceptorConfig) -> MediaUrlInterceptor,
+    /** Correspondances déjà trouvées (recherche, lectures précédentes) : source essayée en premier, sans nouvelle recherche. */
+    private val matches: MatchMemory? = null,
 ) {
 
     suspend fun resolve(
@@ -55,19 +58,24 @@ class TmdbSourceResolver(
         require(media.type == MediaKind.MOVIE || (media.season != null && media.episode != null)) {
             "Une série nécessite season et episode"
         }
-        val providers = repo.store.value.activeProviders(media.type)
+        var providers = repo.store.value.activeProviders(media.type)
         if (providers.isEmpty()) return PlaybackResolution.NoSources
+        val known = matches?.get(media)
+        if (known != null && providers.any { it.id == known.providerId }) {
+            providers = providers.sortedBy { if (it.id == known.providerId) 0 else 1 }
+        }
 
         val failures = mutableListOf<ProviderFailure>()
         for (provider in providers) {
             currentCoroutineContext().ensureActive()
             try {
-                return resolveWith(provider, media) { onProgress(ResolveProgress(provider.name, it)) }
+                return resolveWith(provider, media, known?.takeIf { it.providerId == provider.id }) { onProgress(ResolveProgress(provider.name, it)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 val msg = e.message ?: e.javaClass.simpleName
                 Log.w(TAG, "[${provider.id}] $msg")
+                if (known?.providerId == provider.id) matches?.forget(media) // correspondance périmée
                 failures += ProviderFailure(provider.name, msg)
                 onProgress(ResolveProgress(provider.name, "Échec : $msg", failed = true))
             }
@@ -78,15 +86,22 @@ class TmdbSourceResolver(
     private suspend fun resolveWith(
         provider: SourceProvider,
         media: MediaRequest,
+        known: MatchMemory.Match?,
         step: (String) -> Unit,
     ): PlaybackResolution.Ready {
-        step("Recherche du titre…")
-        val outcome = scraper.search(provider, media)
-        val best = outcome.best ?: throw ResolveStepException(
-            if (outcome.results.isEmpty()) "Aucun résultat" else "${outcome.results.size} résultat(s), aucun ne correspond",
-        )
+        val matched: SearchResult = if (known != null) {
+            SearchResult(known.title, known.link, null)
+        } else {
+            step("Recherche du titre…")
+            val outcome = scraper.search(provider, media)
+            val best = outcome.best ?: throw ResolveStepException(
+                if (outcome.results.isEmpty()) "Aucun résultat" else "${outcome.results.size} résultat(s), aucun ne correspond",
+            )
+            matches?.remember(media, provider.id, best.result.link, best.result.title)
+            best.result
+        }
 
-        var pageUrl = best.result.link
+        var pageUrl = matched.link
         if (media.type == MediaKind.TV) {
             val s = media.season!!
             val e = media.episode!!
@@ -97,8 +112,9 @@ class TmdbSourceResolver(
         val player = scraper.playerPage(provider, pageUrl)
         step("Analyse du lecteur…")
 
-        val config = InterceptorConfig(
-            timeoutMs = provider.player.timeoutMs ?: 20_000,
+        val baseTimeout = provider.player.timeoutMs ?: 30_000
+        fun config(timeout: Long) = InterceptorConfig(
+            timeoutMs = timeout,
             userAgent = provider.headers.getIgnoreCase("User-Agent"),
             allowedHosts = provider.player.allowedHosts.toSet(),
             extraHlsPattern = provider.player.extraHlsPattern?.let { Regex(it, RegexOption.IGNORE_CASE) },
@@ -106,13 +122,19 @@ class TmdbSourceResolver(
         val headers = provider.headers.filterKeys { !it.equals("User-Agent", true) } +
             ("Referer" to (player.referer ?: pageUrl))
 
-        return when (val r = interceptorFactory(config).resolve(player.url, headers)) {
+        var r = interceptorFactory(config(baseTimeout)).resolve(player.url, headers)
+        if (r is ResolveResult.Timeout) {
+            // Le lecteur met parfois du temps à démarrer : un second essai, plus long.
+            step("Le lecteur tarde, nouvel essai…")
+            r = interceptorFactory(config(baseTimeout * 3 / 2)).resolve(player.url, headers)
+        }
+        return when (r) {
             is ResolveResult.Success -> PlaybackResolution.Ready(
                 stream = r.best,
                 alternatives = r.all,
                 providerId = provider.id,
                 providerName = provider.name,
-                matchedTitle = best.result.title,
+                matchedTitle = matched.title,
             )
             is ResolveResult.Timeout -> throw ResolveStepException("Aucun flux vidéo détecté (délai dépassé)")
             is ResolveResult.Failure -> throw ResolveStepException(r.reason)

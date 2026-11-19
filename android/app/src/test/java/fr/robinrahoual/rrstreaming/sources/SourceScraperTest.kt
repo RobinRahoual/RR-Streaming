@@ -20,6 +20,15 @@ class TitleMatcherTest {
         assertTrue(TitleMatcher.similarity("Le Fabuleux Destin d'Amélie Poulain", "fabuleux destin d amelie poulain") > 0.95)
     }
 
+    @Test fun `titres de films avec annee, langue ou qualite`() {
+        fun ok(t: String, y: Int, r: String, ry: String? = null) =
+            TitleMatcher.pickBest(listOf(SearchResult(r, "x", ry)), MediaRequest(1, MediaKind.MOVIE, t, year = y), match) != null
+        assertTrue(ok("Dune", 2021, "Dune (2021)"))
+        assertTrue(ok("Oppenheimer", 2023, "Oppenheimer en streaming VF HD", "2023"))
+        assertTrue(!ok("Dune", 2021, "Dune (1984)"))
+        assertTrue(!ok("Up", 2009, "Up in the Air", "2009"))
+    }
+
     @Test fun `choisit le bon titre et la bonne annee`() {
         val results = listOf(
             SearchResult("Dune (1984)", "a", "1984"),

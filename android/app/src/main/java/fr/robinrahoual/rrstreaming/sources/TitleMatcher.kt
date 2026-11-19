@@ -23,15 +23,12 @@ object TitleMatcher {
             .replace(SPACES, " ")
             .trim()
 
-    /** Coefficient de Dice sur bigrammes, entre 0 et 1. */
-    fun similarity(a: String?, b: String?): Double {
-        val x = normalize(a).replace(" ", "")
-        val y = normalize(b).replace(" ", "")
+    private fun dice(x: String, y: String): Double {
         if (x.isEmpty() || y.isEmpty()) return 0.0
         if (x == y) return 1.0
         if (x.length < 2 || y.length < 2) return 0.0
         val grams = HashMap<String, Int>()
-        for (i in 0 until x.length - 1) grams[x.substring(i, i + 2)] = (grams[x.substring(i, i + 2)] ?: 0) + 1
+        for (i in 0 until x.length - 1) { val g = x.substring(i, i + 2); grams[g] = (grams[g] ?: 0) + 1 }
         var hits = 0
         for (i in 0 until y.length - 1) {
             val g = y.substring(i, i + 2)
@@ -39,6 +36,32 @@ object TitleMatcher {
             if (n > 0) { grams[g] = n - 1; hits++ }
         }
         return 2.0 * hits / (x.length - 1 + y.length - 1)
+    }
+
+    // Mots ajoutés par les sites autour du titre (« Dune (2021) VF HD en streaming »).
+    private val NOISE = Regex("""\b(vf|vff|vfq|vo|vost|vostfr|subfrench|truefrench|french|multi|hd|fhd|uhd|4k|hdr|1080p?|720p?|480p?|bluray|webrip|web|dl|streaming|en streaming|film complet|complet|gratuit|regarder|voir)\b""")
+    private val YEAR_IN_TITLE = Regex("""\b(19|20)\d{2}\b""")
+
+    /** Titre d'un résultat sans année ni mentions de langue/qualité, et l'année trouvée dans le titre. */
+    fun cleanResultTitle(raw: String?): Pair<String, Int?> {
+        val text = raw.orEmpty()
+        val year = YEAR_IN_TITLE.find(text)?.value?.toInt()
+        val cleaned = normalize(text.replace(YEAR_IN_TITLE, " ")).replace(NOISE, " ").replace(SPACES, " ").trim()
+        return cleaned to year
+    }
+
+    /** Similarité titre TMDB / titre d'un résultat (0..1), en ignorant année, langue et qualité ajoutées par le site. */
+    fun similarity(tmdbTitle: String?, resultTitle: String?): Double {
+        val a = normalize(tmdbTitle)
+        val b = cleanResultTitle(resultTitle).first
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        var score = maxOf(dice(a.replace(" ", ""), b.replace(" ", "")), dice(a.replace(" ", ""), normalize(resultTitle).replace(" ", "")))
+        val ta = a.split(" ")
+        val tb = b.split(" ").toSet()
+        val extra = tb.size - ta.toSet().size
+        // Tous les mots du titre présents, avec un mot en plus (deux si le titre en a plusieurs).
+        if (ta.all { it in tb } && extra <= (if (ta.size > 1) 2 else 1)) score = maxOf(score, if (ta.size > 1) 0.92 else 0.86)
+        return minOf(1.0, score)
     }
 
     fun yearOf(s: String?): Int? = s?.let { Regex("""\b(19|20)\d{2}\b""").find(it)?.value?.toInt() }
@@ -49,7 +72,7 @@ object TitleMatcher {
         var best: ScoredResult? = null
         for (r in results) {
             var score = titles.maxOfOrNull { similarity(it, r.title) } ?: 0.0
-            val ry = yearOf(r.year)
+            val ry = yearOf(r.year) ?: cleanResultTitle(r.title).second
             if (media.year != null && ry != null) {
                 val diff = kotlin.math.abs(media.year - ry)
                 if (diff > match.yearTolerance) continue

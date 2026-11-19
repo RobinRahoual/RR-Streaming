@@ -2,6 +2,7 @@ package fr.robinrahoual.rrstreaming
 
 import android.app.Application
 import fr.robinrahoual.rrstreaming.resolver.AvailabilityChecker
+import fr.robinrahoual.rrstreaming.resolver.MatchMemory
 import fr.robinrahoual.rrstreaming.resolver.MediaUrlInterceptor
 import fr.robinrahoual.rrstreaming.resolver.StreamPrefetcher
 import fr.robinrahoual.rrstreaming.resolver.TmdbSourceResolver
@@ -39,14 +40,17 @@ class RRStreamingApp : Application() {
     val scraper: SourceScraper by lazy { SourceScraper(http, WebViewPageRenderer(this)) }
 
     val resolver: TmdbSourceResolver by lazy {
-        TmdbSourceResolver(sources, scraper) { config -> MediaUrlInterceptor(this, config) }
+        TmdbSourceResolver(sources, scraper, { config -> MediaUrlInterceptor(this, config) }, matches)
     }
+
+    /** Titres déjà trouvés sur une source (recherche → lecture sans nouvelle recherche). */
+    val matches = MatchMemory()
 
     /** Recherche du flux lancée dès l'ouverture d'une fiche (voir StreamPrefetcher). */
     val prefetcher: StreamPrefetcher by lazy { StreamPrefetcher(resolver, appScope) }
 
     /** Badges « Disponible / Introuvable » des résultats de recherche. */
-    val availability: AvailabilityChecker by lazy { AvailabilityChecker(sources, scraper, appScope) }
+    val availability: AvailabilityChecker by lazy { AvailabilityChecker(sources, scraper, appScope, matches) }
 
     override fun onCreate() {
         super.onCreate()
@@ -59,6 +63,7 @@ class RRStreamingApp : Application() {
             sources.store.distinctUntilChangedBy { it.revision }.drop(1).collect {
                 prefetcher.clear()
                 availability.clear()
+                matches.clear()
             }
         }
     }

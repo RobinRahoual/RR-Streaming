@@ -45,9 +45,7 @@ function normalizeTitle(s) {
 }
 
 /** Coefficient de Dice sur bigrammes (0..1). */
-function similarity(a, b) {
-  const x = normalizeTitle(a).replace(/ /g, '');
-  const y = normalizeTitle(b).replace(/ /g, '');
+function dice(x, y) {
   if (!x || !y) return 0;
   if (x === y) return 1;
   if (x.length < 2 || y.length < 2) return 0;
@@ -65,14 +63,45 @@ function similarity(a, b) {
   return (2 * hits) / (x.length - 1 + y.length - 1);
 }
 
-/** Choisit le meilleur résultat pour un média TMDB, ou null. */
+// Mots ajoutés par les sites autour du titre (« Dune (2021) VF HD en streaming »).
+const NOISE = /\b(vf|vff|vfq|vo|vost|vostfr|subfrench|truefrench|french|multi|hd|fhd|uhd|4k|hdr|1080p?|720p?|480p?|bluray|webrip|web|dl|streaming|en streaming|film complet|complet|gratuit|regarder|voir)\b/g;
+const YEAR_IN_TITLE = /\b(19|20)\d{2}\b/;
+
+/** Titre d'un résultat sans année ni mentions de langue/qualité ; renvoie aussi l'année trouvée dans le titre. */
+function cleanResultTitle(raw) {
+  const text = String(raw || '');
+  const year = (text.match(YEAR_IN_TITLE) || [null])[0];
+  const cleaned = normalizeTitle(text.replace(/\((?:19|20)\d{2}\)|\[(?:19|20)\d{2}\]/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' '))
+    .replace(NOISE, ' ').replace(/\s+/g, ' ').trim();
+  return { cleaned, year };
+}
+
+/**
+ * Similarité entre un titre TMDB et le titre d'un résultat (0..1).
+ * Ignore année, langue et qualité ajoutées par le site ; tolère un ou deux mots en plus.
+ */
+function similarity(tmdbTitle, resultTitle) {
+  const a = normalizeTitle(tmdbTitle);
+  const b = cleanResultTitle(resultTitle).cleaned;
+  if (!a || !b) return 0;
+  let score = Math.max(dice(a.replace(/ /g, ''), b.replace(/ /g, '')), dice(a.replace(/ /g, ''), normalizeTitle(resultTitle).replace(/ /g, '')));
+  // Tous les mots du titre présents, avec un mot en plus (deux si le titre en a plusieurs) : correspond.
+  const ta = a.split(' ');
+  const tb = new Set(b.split(' '));
+  const extra = tb.size - new Set(ta).size;
+  if (ta.every((w) => tb.has(w)) && extra <= (ta.length > 1 ? 2 : 1)) score = Math.max(score, ta.length > 1 ? 0.92 : 0.86);
+  return Math.min(1, score);
+}
+
+/** Meilleur résultat pour un média TMDB, ou null. */
 function pickBest(results, media, match) {
   const titles = [media.title, media.originalTitle].filter(Boolean);
   let best = null;
   for (const r of results) {
     let score = Math.max(...titles.map((t) => similarity(t, r.title)));
-    if (media.year && r.year) {
-      const diff = Math.abs(Number(media.year) - Number(r.year));
+    const ry = r.year || cleanResultTitle(r.title).year;
+    if (media.year && ry) {
+      const diff = Math.abs(Number(media.year) - Number(ry));
       if (diff > match.yearTolerance) continue;
       if (diff === 0) score += 0.05; // départage les remakes
     }
@@ -128,24 +157,36 @@ function fill(template, vars) {
 
 // ------------------------------------------------------------ Pipeline par source
 
-/** Recherche le média sur la source et renvoie la meilleure page correspondante. */
+/**
+ * Recherche le média sur la source et renvoie la meilleure page correspondante.
+ * Essaie le titre, puis le titre original s'il diffère (beaucoup de sites indexent les films sous leur titre original).
+ */
 async function search(provider, media) {
   const s = provider.search;
-  const query = fill(s.query || '{title}', {
-    title: media.title,
+  const template = s.query || '{title}';
+  const queryFor = (title) => fill(template, {
+    title,
     originalTitle: media.originalTitle || media.title,
     year: media.year || '',
     type: media.type,
-  }).trim();
-  const url = fill(s.url, { baseUrl: provider.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
-  const { html, url: finalUrl } = await fetchPage(url, provider.headers, provider.render);
-  const $ = cheerio.load(html);
-  const results = $(s.item).toArray().map((el) => ({
-    title: extract($, el, s.title, finalUrl),
-    link: extract($, el, s.link, finalUrl),
-    year: extract($, el, s.year, finalUrl),
-  })).filter((r) => r.title && r.link);
-  return { results, best: pickBest(results, media, provider.match) };
+  }).replace(/\s+/g, ' ').trim();
+  const queries = [...new Set([queryFor(media.title), media.originalTitle ? queryFor(media.originalTitle) : null].filter(Boolean))];
+
+  const all = [];
+  for (const query of queries) {
+    const url = fill(s.url, { baseUrl: provider.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
+    const { html, url: finalUrl } = await fetchPage(url, provider.headers, provider.render);
+    const $ = cheerio.load(html);
+    const results = $(s.item).toArray().map((el) => ({
+      title: extract($, el, s.title, finalUrl),
+      link: extract($, el, s.link, finalUrl),
+      year: extract($, el, s.year, finalUrl),
+    })).filter((r) => r.title && r.link);
+    for (const r of results) if (!all.some((x) => x.link === r.link)) all.push(r);
+    const best = pickBest(all, media, provider.match);
+    if (best) return { results: all, best, query };
+  }
+  return { results: all, best: null };
 }
 
 /** Pour une série, renvoie l'URL de la page de l'épisode. */
@@ -195,6 +236,6 @@ async function playerPage(provider, pageUrl) {
 }
 
 module.exports = {
-  extract, normalizeTitle, similarity, pickBest, fill, search, episodeUrl, playerPage,
+  extract, normalizeTitle, similarity, cleanResultTitle, pickBest, fill, search, episodeUrl, playerPage,
   fetchHtml, fetchPage, setPageRenderer, canRender, DEFAULT_UA,
 };

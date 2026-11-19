@@ -215,16 +215,40 @@ const Views = (() => {
     let token = 0;
     let cardsByKey = new Map();
     // Disponibilité sur les sources, affichée sur chaque affiche au fil des réponses.
+    const setBadge = (card, text) => {
+      const art = card.querySelector('.art');
+      art.querySelectorAll('.avail-badge').forEach((b) => b.remove());
+      art.append(el('div', { class: 'avail-badge' }, text));
+    };
     const offAvail = window.rr.sources.onAvailability((r) => {
       const card = cardsByKey.get(r.key);
       if (!card) return;
       card.classList.remove('checking');
       card.classList.add(r.available ? 'available' : 'unavailable');
-      const art = card.querySelector('.art');
-      art.querySelectorAll('.avail-badge').forEach((b) => b.remove());
-      art.append(el('div', { class: 'avail-badge' }, r.available ? 'Disponible' : 'Introuvable'));
+      if (!card.classList.contains('ready')) setBadge(card, r.available ? 'Disponible' : 'Introuvable');
       if (r.available) card.title = `Disponible sur ${r.provider}`;
     });
+    // Flux préparé (survol / focus d'un résultat disponible) : badge « Prêt à lire ».
+    const applyStream = (st) => {
+      const card = cardsByKey.get(st.key.split(':').slice(0, 2).join(':'));
+      if (!card || !st.key.endsWith(':0:0')) return;
+      card.classList.toggle('ready', st.status === 'ready');
+      if (st.status === 'ready') setBadge(card, 'Prêt à lire');
+      else if (st.status === 'resolving' && card.classList.contains('available')) setBadge(card, 'Préparation…');
+      else if (card.classList.contains('available')) setBadge(card, 'Disponible');
+    };
+    const offStream = window.rr.stream.onStatus(applyStream);
+    let hoverTimer = null;
+    const prepare = (it) => {
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => {
+        const card = cardsByKey.get(`${it.media_type}:${it.id}`);
+        // Films : on prépare directement le flux ; séries : la fiche choisira l'épisode.
+        if (card && card.classList.contains('available') && it.media_type === 'movie') {
+          call(window.rr.stream.prefetch(itemMedia(it), 'hover')).then(applyStream).catch(() => {});
+        }
+      }, 500);
+    };
     const run = async () => {
       const q = input.value.trim();
       lastQuery = q;
@@ -238,6 +262,8 @@ const Views = (() => {
         const cards = items.map((it) => {
           const card = posterCard(it, openItem(it));
           card.classList.add('checking');
+          card.addEventListener('mouseenter', () => prepare(it));
+          card.addEventListener('rr-focus', () => prepare(it));
           cardsByKey.set(`${it.media_type}:${it.id}`, card);
           return card;
         });
@@ -255,7 +281,7 @@ const Views = (() => {
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 320); });
     if (lastQuery) run();
     UI.setFocus(input, { scroll: false });
-    return () => { clearTimeout(timer); offAvail(); };
+    return () => { clearTimeout(timer); clearTimeout(hoverTimer); offAvail(); offStream(); window.rr.sources.cancelAvailability(); };
   }
 
   // ---------------------------------------------------------- Fiches

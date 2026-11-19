@@ -7,8 +7,9 @@
 const scraper = require('../sources/scraper');
 
 class Availability {
-  constructor(repo, { emit = () => {}, ttlMs = 30 * 60 * 1000, concurrency = 2, search = scraper.search } = {}) {
+  constructor(repo, { emit = () => {}, ttlMs = 30 * 60 * 1000, concurrency = 2, search = scraper.search, matches = null } = {}) {
     this.repo = repo;
+    this.matches = matches;
     this.emit = emit;
     this.ttl = ttlMs;
     this.concurrency = concurrency;
@@ -37,6 +38,12 @@ class Availability {
     return this.repo.activeProviders().length;
   }
 
+  /** Quitter la recherche : les vérifications en attente sont abandonnées. */
+  cancel() {
+    this.queue = [];
+    this.generation++;
+  }
+
   clear() {
     this.cache.clear();
     this.queue = [];
@@ -60,7 +67,11 @@ class Availability {
     for (const provider of this.repo.activeProviders(media.type)) {
       try {
         const { best } = await this.search(provider, media);
-        if (best) { value = { available: true, provider: provider.name }; break; }
+        if (best) {
+          value = { available: true, provider: provider.name };
+          if (this.matches) this.matches.remember(media, provider.id, best.link, best.title); // réutilisé par « Lire »
+          break;
+        }
       } catch { /* source injoignable : on essaie la suivante */ }
     }
     this.cache.set(key, { at: Date.now(), value });
