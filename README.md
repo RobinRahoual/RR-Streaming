@@ -62,7 +62,7 @@ src/main/            Processus principal Electron
   updater.js         Mises à jour automatiques (electron-updater + GitHub Releases)
 src/renderer/        Interface (Accueil, Films, Séries, Recherche, fiches, Sources, Réglages, lecteur)
 src/companion/       Page web compagnon (partagée avec la version Fire TV)
-android/             Modules Kotlin de la version Fire TV (résolveur, sources, serveur compagnon, écran Sources)
+android/             Version Fire TV : modules Kotlin, Gradle, manifest (voir android/README.md)
 docs/                Schéma JSON des sources
 ```
 

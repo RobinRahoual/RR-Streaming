@@ -75,6 +75,9 @@ test('similarity ignore accents, casse et articles', () => {
 test('search + episodeUrl de bout en bout sur un faux site', async () => {
   const { srv, base } = await serve((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (req.url === '/serie/page') {
+      return res.end('<li class="ep"><span class="s">Saison 2</span><span class="e">Épisode 3</span><a href="/ep/2-3">x</a></li>');
+    }
     if (req.url.startsWith('/recherche')) {
       assert.match(req.url, /q=The%20Office/);
       return res.end(`<article class="card"><h3 class="card-title">The Office</h3><span class="card-meta">2005</span><a href="/serie/the-office">voir</a></article>
@@ -89,6 +92,8 @@ test('search + episodeUrl de bout en bout sur un faux site', async () => {
     assert.strictEqual(best.link, `${base}/serie/the-office`);
     const ep = await scraper.episodeUrl(p, best.link, 2, 3);
     assert.strictEqual(ep, `${base}/serie/the-office/saison-2/episode-3`);
+    const parsed = { ...p, episodes: { item: 'li.ep', season: { css: '.s' }, episode: { css: '.e' }, link: { css: 'a', attr: 'href' } } };
+    assert.strictEqual(await scraper.episodeUrl(parsed, `${base}/serie/page`, 2, 3), `${base}/ep/2-3`);
   } finally {
     srv.close();
   }

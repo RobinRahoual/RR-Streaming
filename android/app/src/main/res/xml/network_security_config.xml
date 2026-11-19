@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTP non chiffré autorisé : listes de sources servies par un NAS / serveur local (http://192.168.x.x/sources.json)
+  et sources ou lecteurs qui n'utilisent pas HTTPS. Android ne permet pas de cibler une plage d'IP privées,
+  d'où l'autorisation globale. Le HTTPS reste vérifié normalement (certificats système uniquement).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

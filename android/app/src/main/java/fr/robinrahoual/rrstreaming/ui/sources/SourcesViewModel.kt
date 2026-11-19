@@ -101,4 +101,18 @@ class SourcesViewModel(
     }
 
     override fun onCleared() = stopCompanion()
+
+    companion object {
+        /** viewModel(factory = SourcesViewModel.Factory) dans l'écran Compose. */
+        val Factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : androidx.lifecycle.ViewModel> create(
+                modelClass: Class<T>,
+                extras: androidx.lifecycle.viewmodel.CreationExtras,
+            ): T {
+                val app = extras[androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]!!
+                return SourcesViewModel(app, (app as fr.robinrahoual.rrstreaming.RRStreamingApp).sources) as T
+            }
+        }
+    }
 }

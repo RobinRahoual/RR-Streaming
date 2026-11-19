@@ -102,6 +102,12 @@ async function fetchHtml(url, headers = {}, timeoutMs = 15000) {
   }
 }
 
+/** Premier nombre trouvé (« Saison 2 » → 2). */
+function firstInt(v) {
+  const m = String(v || '').match(/\d+/);
+  return m ? Number(m[0]) : NaN;
+}
+
 function fill(template, vars) {
   return template.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 }
@@ -140,8 +146,8 @@ async function episodeUrl(provider, showUrl, season, episode) {
   const { html, url } = await fetchHtml(showUrl, provider.headers);
   const $ = cheerio.load(html);
   for (const el of $(ep.item).toArray()) {
-    const sNum = parseInt(extract($, el, ep.season, url), 10);
-    const eNum = parseInt(extract($, el, ep.episode, url), 10);
+    const sNum = firstInt(extract($, el, ep.season, url));
+    const eNum = firstInt(extract($, el, ep.episode, url));
     if (sNum === Number(season) && eNum === Number(episode)) {
       const link = extract($, el, ep.link, url);
       if (link) return link;
