@@ -9,25 +9,36 @@ const AUTOPLAY_JS = `(() => { try {
     .forEach(s => { const b = document.querySelector(s); if (b) b.click(); });
 } catch (e) {} })();`;
 
-// Centre du lecteur dans la page : plus grande vidéo / iframe / zone « player » visible,
-// ramenée dans la fenêtre. Un lecteur sous un grand en-tête n'est pas au centre de l'écran.
-const TARGET_JS = `(() => { try {
-  const els = [...document.querySelectorAll('video,iframe,embed,object,[id*="player" i],[class*="player" i]')];
-  let best = null, area = 0;
-  for (const el of els) {
+// Cibles de clic dans la page, de la plus probable à la moins probable : vidéo, iframe de lecteur
+// (plein écran autorisé, adresse « embed / player »), zone « player ». Les formats publicitaires
+// standard (300×250, 728×90, 160×600…) et les petits éléments sont écartés.
+const TARGETS_JS = `(() => { try {
+  const AD = [[300,250],[336,280],[728,90],[970,90],[970,250],[160,600],[300,600],[320,50],[320,100],[468,60]];
+  const isAd = (w, h) => AD.some(([a, b]) => Math.abs(w - a) <= 4 && Math.abs(h - b) <= 4);
+  const out = [];
+  for (const el of document.querySelectorAll('video,iframe,embed,object,[id*="player" i],[class*="player" i]')) {
     const r = el.getBoundingClientRect();
-    if (r.width < 200 || r.height < 120) continue;
+    if (r.width < 240 || r.height < 135 || isAd(r.width, r.height)) continue;
     const st = getComputedStyle(el);
     if (st.display === 'none' || st.visibility === 'hidden' || +st.opacity === 0) continue;
-    if (r.width * r.height > area) { area = r.width * r.height; best = el; }
+    const tag = el.tagName;
+    const src = (el.getAttribute('src') || el.getAttribute('data-src') || '').toLowerCase();
+    let score = tag === 'VIDEO' ? 4 : tag === 'IFRAME' ? 2 : 1;
+    if (tag === 'IFRAME' && (el.allowFullscreen || /fullscreen/.test(el.getAttribute('allow') || '') || /embed|player|video|stream|watch|\\/e\\//.test(src))) score += 2;
+    if (r.width / r.height > 1.2 && r.width / r.height < 2.4) score += 1;
+    out.push({ el, score, area: r.width * r.height });
   }
-  if (!best) return null;
-  best.scrollIntoView({ block: 'center', inline: 'center' });
-  const r = best.getBoundingClientRect();
-  const x = Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 2);
-  const y = Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 2);
-  return [Math.round(x), Math.round(y)];
-} catch (e) { return null; } })()`;
+  out.sort((a, b) => b.score - a.score || b.area - a.area);
+  const pts = [];
+  for (const { el } of out.slice(0, 3)) {
+    if (!pts.length) el.scrollIntoView({ block: 'center', inline: 'center' });
+    const r = el.getBoundingClientRect();
+    const x = Math.round(Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 2));
+    const y = Math.round(Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 2));
+    if (!pts.some(([a, b]) => Math.abs(a - x) < 30 && Math.abs(b - y) < 30)) pts.push([x, y]);
+  }
+  return pts;
+} catch (e) { return []; } })()`;
 
 let counter = 0;
 
@@ -48,6 +59,9 @@ async function resolveStream(pageUrl, opts = {}) {
     userAgent = DEFAULT_UA,
     onLog = () => {},
     signal = null,
+    // Suivre les redirections de la page principale qui ne viennent pas d'un clic (changement de
+    // domaine du site, page relais). Le second essai du pipeline repasse en mode strict.
+    followPageRedirects = true,
   } = opts;
   if (signal && signal.aborted) throw new Error('Annulé');
 
@@ -120,17 +134,40 @@ async function resolveStream(pageUrl, opts = {}) {
   });
 
   // 2) Détection des manifests : ici on a les headers réellement envoyés
+  const addCandidate = (d, type, how = '') => {
+    if (candidates.has(d.url)) return;
+    candidates.set(d.url, null); // réservé (captureHeaders est asynchrone)
+    captureHeaders(ses, d).then((h) => {
+      candidates.set(d.url, { url: d.url, type, headers: h, sourcePage: wc.isDestroyed() ? pageUrl : wc.getURL(), order: order++ });
+      onLog(`Flux détecté (${type.toUpperCase()}${how}) : ${d.url.slice(0, 120)}`);
+      firstHitResolve();
+    });
+  };
+  const sent = new Map(); // id requête → détails (headers envoyés), pour la détection par Content-Type
+  const recent = []; // dernières requêtes XHR / fetch / média : diagnostic si rien n'est trouvé
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (d, cb) => {
     const type = classifier.detectStream(d.url);
-    if (!type) return cb({ requestHeaders: d.requestHeaders });
-    if (!candidates.has(d.url)) {
-      captureHeaders(ses, d).then((h) => {
-        candidates.set(d.url, { url: d.url, type, headers: h, sourcePage: wc.isDestroyed() ? pageUrl : wc.getURL(), order: order++ });
-        onLog(`Flux détecté (${type.toUpperCase()}) : ${d.url.slice(0, 120)}`);
-        firstHitResolve();
-      });
+    if (!type) {
+      if (['xhr', 'media', 'other'].includes(d.resourceType)) {
+        sent.set(d.id, d);
+        if (sent.size > 400) sent.delete(sent.keys().next().value);
+        recent.push(`${d.resourceType} ${shortUrl(d.url)}`);
+        if (recent.length > 8) recent.shift();
+      }
+      return cb({ requestHeaders: d.requestHeaders });
     }
+    addCandidate(d, type);
     // Le manifest n'est pas téléchargé par la fenêtre : pas de son, pas de bande passante, token préservé.
+    cb({ cancel: true });
+  });
+  // Flux dont l'adresse est déguisée (.txt, .png, sans extension) : reconnu à son Content-Type.
+  ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (d, cb) => {
+    const req = sent.get(d.id);
+    if (!req) return cb({});
+    sent.delete(d.id);
+    const type = streamTypeFromContentType(headerValue(d.responseHeaders, 'content-type'), d.resourceType);
+    if (!type || d.statusCode >= 400) return cb({});
+    addCandidate(req, type, ', Content-Type');
     cb({ cancel: true });
   });
 
@@ -140,11 +177,18 @@ async function resolveStream(pageUrl, opts = {}) {
     onLog(`Redirection publicitaire bloquée → ${String(url).slice(0, 100)}`);
     scheduleClick(800); // le clic a été consommé par la pub : recliquer vite
   };
+  let followed = 0;
   const guard = (e, url, isMainFrame = true) => {
-    if (isMainFrame && !classifier.isNavigationAllowed(url, pageHost)) {
-      e.preventDefault();
-      blocked(url);
+    if (!isMainFrame || classifier.isNavigationAllowed(url, pageHost)) return;
+    // Avant tout clic, une redirection de la page elle-même vient du site (nouveau domaine, page
+    // relais), pas d'une pub : on la suit (3 au plus), sauf vers une régie connue.
+    if (followPageRedirects && clicks === 0 && followed < 3 && !classifier.detectAd(url)) {
+      followed++;
+      onLog(`Redirection du site suivie → ${String(url).slice(0, 100)}`);
+      return;
     }
+    e.preventDefault();
+    blocked(url);
   };
   const frameGuard = (details) => {
     if (!details || details.isMainFrame) return;
@@ -193,10 +237,13 @@ async function resolveStream(pageUrl, opts = {}) {
     clickTimer = null;
     if (wc.isDestroyed() || candidates.size || clicks >= 10) return;
     clicks++;
-    let target = null;
-    try { target = await wc.executeJavaScript(TARGET_JS); } catch { /* page en cours de changement */ }
+    let targets = [];
+    try { targets = await wc.executeJavaScript(TARGETS_JS); } catch { /* page en cours de changement */ }
     if (wc.isDestroyed() || candidates.size) return;
-    const [x, y] = Array.isArray(target) ? target : [640, 360];
+    // Deux clics par cible (le premier est souvent pris par une pub), puis la suivante,
+    // puis le centre de la fenêtre ; et on recommence.
+    const pts = [...(Array.isArray(targets) ? targets : []), [640, 360]];
+    const [x, y] = pts[Math.floor((clicks - 1) / 2) % pts.length];
     lastClickAt = Date.now();
     onLog(`Clic ${clicks} sur le lecteur (${x}, ${y})`);
     await trustedClick(wc, x, y);
@@ -217,10 +264,14 @@ async function resolveStream(pageUrl, opts = {}) {
       .map(([k, v]) => `${k}: ${v}`).join('\n');
     wc.loadURL(pageUrl, { userAgent, extraHeaders: extraHeaders || undefined, httpReferrer: referer || undefined }).catch(() => {});
 
-    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Aucun flux vidéo détecté (délai dépassé)')), timeoutMs));
+    const timeout = new Promise((_, rej) => setTimeout(() => {
+      if (recent.length) onLog(`Dernières requêtes du lecteur : ${recent.join(' · ')}`);
+      else onLog('Aucune requête XHR / vidéo de la page : le lecteur ne s\'est pas lancé');
+      rej(new Error('Aucun flux vidéo détecté (délai dépassé)'));
+    }, timeoutMs));
     await Promise.race([firstHit, timeout]);
     await new Promise((r) => setTimeout(r, settleMs)); // master + variantes
-    const all = rank(candidates.values());
+    const all = rank([...candidates.values()].filter(Boolean));
     return { best: all[0], all };
   } finally {
     if (signal) signal.removeEventListener('abort', onAbort);
@@ -228,6 +279,7 @@ async function resolveStream(pageUrl, opts = {}) {
     clearTimeout(clickTimer);
     ses.webRequest.onBeforeRequest(null);
     ses.webRequest.onBeforeSendHeaders(null);
+    ses.webRequest.onHeadersReceived(null);
     try { if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach(); } catch { /* ignore */ }
     for (const p of popups) if (!p.isDestroyed()) p.destroy();
     if (!win.isDestroyed()) win.destroy();
@@ -278,6 +330,24 @@ async function captureHeaders(ses, d) {
   }
   if (cookie) h.Cookie = cookie;
   return h;
+}
+
+function headerValue(headers, name) {
+  const key = Object.keys(headers || {}).find((k) => k.toLowerCase() === name);
+  const v = key ? headers[key] : null;
+  return Array.isArray(v) ? v[0] : v || '';
+}
+
+function streamTypeFromContentType(ct, resourceType) {
+  ct = String(ct || '').toLowerCase();
+  if (/mpegurl/.test(ct)) return 'hls';
+  if (/dash\+xml/.test(ct)) return 'dash';
+  if (/^video\/mp4/.test(ct) && resourceType !== 'media') return 'mp4';
+  return null;
+}
+
+function shortUrl(u) {
+  try { const x = new URL(u); return (x.hostname + x.pathname).slice(0, 70); } catch { return String(u).slice(0, 70); }
 }
 
 function safeHost(u) {

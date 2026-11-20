@@ -38,6 +38,11 @@ function createClassifier(opts = {}) {
   };
 
   return {
+    /** Régie publicitaire connue (liste intégrée ou chemin /ads/, /vast/…). */
+    detectAd(url) {
+      return isBlockedUrl(url);
+    },
+
     detectStream(url) {
       if (isBlockedUrl(url)) return null;
       if (HLS.test(url)) return 'hls';

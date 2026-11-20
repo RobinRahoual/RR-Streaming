@@ -136,6 +136,12 @@ test('classifier : iframe du lecteur détournée vers une pub après un clic', (
   assert.equal(c.isFrameNavigationAllowed('https://cdn-ok.net/p', frame, { userTriggered: true }), true);
 });
 
+test('classifier : régies reconnues pour ne pas suivre leurs redirections', () => {
+  const c = createClassifier({});
+  assert.equal(c.detectAd('https://www.popads.net/x'), true);
+  assert.equal(c.detectAd('https://nouveau-domaine.example/film/1'), false);
+});
+
 test('rank : HLS master > variantes > DASH > MP4', () => {
   const r = rank([
     { url: 'https://a/f.mp4', type: 'mp4', order: 0 },

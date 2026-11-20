@@ -60,7 +60,8 @@ async function resolveMedia(repo, media, { onProgress = () => {}, signal, matche
       log(player.url === pageUrl ? 'Pas d\'iframe trouvée : analyse de la page elle-même' : `Lecteur : ${player.url}`);
       step('Analyse du lecteur…');
       const baseTimeout = provider.player.timeoutMs || 30000;
-      const intercept = (url, ref, timeoutMs) => resolveStream(url, {
+      const intercept = (url, ref, timeoutMs, followPageRedirects = true) => resolveStream(url, {
+        followPageRedirects,
         referer: ref,
         headers: provider.headers,
         allowedHosts: provider.player.allowedHosts || [],
@@ -78,7 +79,9 @@ async function resolveMedia(repo, media, { onProgress = () => {}, signal, matche
         // (lecteur qui dépend de la page parente), sinon le même lecteur.
         const other = player.url !== pageUrl;
         step(other ? 'Le lecteur ne répond pas, essai sur la page du titre…' : 'Le lecteur tarde, nouvel essai…');
-        found = await intercept(other ? pageUrl : player.url, other ? null : (player.referer || pageUrl), Math.round(baseTimeout * 0.7));
+        // Second essai en mode strict : si le premier a suivi une redirection du site qui menait
+        // en fait à une pub, celui-ci reste sur la page.
+        found = await intercept(other ? pageUrl : player.url, other ? null : (player.referer || pageUrl), Math.round(baseTimeout * 0.7), false);
       }
       const { best: stream, all } = found;
       return { stream, alternatives: all, provider: { id: provider.id, name: provider.name }, matchedTitle: best.title };
