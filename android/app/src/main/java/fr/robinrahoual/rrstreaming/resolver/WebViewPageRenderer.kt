@@ -66,15 +66,17 @@ class WebViewPageRenderer(
                 }
             }
 
-            fun poll(last: Int, stable: Int) {
+            var loadedAt = 0L
+            // Contenu stable sur deux relevés (400 ms) et au moins 1,2 s après le chargement :
+            // une page sans résultat se termine aussi vite qu'une autre.
+            fun poll(last: String?, stable: Int) {
                 if (done) return
-                if (stable >= 3 || System.currentTimeMillis() > deadline) { readDom(); return }
+                if ((stable >= 2 && System.currentTimeMillis() - loadedAt >= 1_200) || System.currentTimeMillis() > deadline) { readDom(); return }
                 handler.postDelayed({
-                    webView.evaluateJavascript("document.querySelectorAll('a[href]').length") { v ->
-                        val n = v?.toIntOrNull() ?: -1
-                        poll(n, if (n == last && n > 0) stable + 1 else 0)
+                    webView.evaluateJavascript("(document.body ? document.body.innerHTML.length : 0) + ':' + document.querySelectorAll('a[href]').length") { sig ->
+                        poll(sig, if (sig != null && sig == last) stable + 1 else 0)
                     }
-                }, 500)
+                }, 400)
             }
 
             webView = WebView(appContext).apply {
@@ -104,7 +106,7 @@ class WebViewPageRenderer(
                         request.isForMainFrame && !classifier.isNavigationAllowed(request.url, pageHost)
 
                     override fun onPageFinished(view: WebView, finishedUrl: String) {
-                        if (!polling && finishedUrl != "about:blank") { polling = true; poll(-1, 0) }
+                        if (!polling && finishedUrl != "about:blank") { polling = true; loadedAt = System.currentTimeMillis(); poll(null, 0) }
                     }
 
                     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -119,7 +121,7 @@ class WebViewPageRenderer(
             }
             cont.invokeOnCancellation { handler.post { finish(Result.failure(it ?: IllegalStateException("Annulé"))) } }
             // Filet de sécurité : lire le DOM même si onPageFinished n'arrive jamais.
-            handler.postDelayed({ if (!polling) { polling = true; poll(-1, 0) } }, timeoutMs / 2)
+            handler.postDelayed({ if (!polling) { polling = true; loadedAt = System.currentTimeMillis(); poll(null, 0) } }, timeoutMs / 2)
             webView.loadUrl(url, headers)
         }
 }

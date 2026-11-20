@@ -43,8 +43,16 @@ object TitleMatcher {
     private val YEAR_IN_TITLE = Regex("""\b(19|20)\d{2}\b""")
 
     /** Titre d'un résultat sans année ni mentions de langue/qualité, et l'année trouvée dans le titre. */
+    // « Saison 2 », « Season 3 », « S2 », « Partie 1 » : le titre de la série suffit pour la correspondance.
+    private val SEASON_NOISE = Regex("""\b(saison|season|s)\s*\d{1,2}\b|\b(partie|part|cour)\s*\d\b|\b\d{1,2}(e|eme|ème|nd|rd|th)?\s*saison\b""", RegexOption.IGNORE_CASE)
+    private val LATIN = Regex("""^[\p{IsLatin}\p{N}\p{P}\p{S}\s]+$""")
+
+    /** Titres à comparer : titre, titre original (alphabet latin), titres alternatifs. */
+    fun titlesOf(media: MediaRequest): List<String> =
+        (listOf(media.title, media.originalTitle) + media.altTitles).filterNotNull().filter { it.isNotBlank() && LATIN.matches(it) }.distinct()
+
     fun cleanResultTitle(raw: String?): Pair<String, Int?> {
-        val text = raw.orEmpty()
+        val text = raw.orEmpty().replace(SEASON_NOISE, " ")
         val year = YEAR_IN_TITLE.find(text)?.value?.toInt()
         val cleaned = normalize(text.replace(YEAR_IN_TITLE, " ")).replace(NOISE, " ").replace(SPACES, " ").trim()
         return cleaned to year
@@ -66,17 +74,23 @@ object TitleMatcher {
 
     fun yearOf(s: String?): Int? = s?.let { Regex("""\b(19|20)\d{2}\b""").find(it)?.value?.toInt() }
 
-    /** Meilleur résultat au-dessus de minScore, en respectant la tolérance sur l'année. */
+    /**
+     * Meilleur résultat au-dessus de minScore. Films : l'année doit correspondre (± tolérance).
+     * Séries : l'année ne sert qu'à départager (les sites affichent souvent l'année de la saison).
+     */
     fun pickBest(results: List<SearchResult>, media: MediaRequest, match: MatchSpec): ScoredResult? {
-        val titles = listOfNotNull(media.title, media.originalTitle).filter { it.isNotBlank() }
+        val titles = titlesOf(media).ifEmpty { listOf(media.title) }
         var best: ScoredResult? = null
         for (r in results) {
-            var score = titles.maxOfOrNull { similarity(it, r.title) } ?: 0.0
+            var score = titles.maxOf { similarity(it, r.title) }
             val ry = yearOf(r.year) ?: cleanResultTitle(r.title).second
             if (media.year != null && ry != null) {
                 val diff = kotlin.math.abs(media.year - ry)
-                if (diff > match.yearTolerance) continue
                 if (diff == 0) score += 0.05 // départage les remakes
+                else if (diff > match.yearTolerance) {
+                    if (media.type != MediaKind.TV) continue
+                    score -= 0.04
+                }
             }
             if (score >= match.minScore && (best == null || score > best.score)) best = ScoredResult(r, score)
         }
@@ -96,6 +110,8 @@ data class MediaRequest(
     val episode: Int? = null,
     /** Anime selon TMDB : genre Animation (16) et langue d'origine japonaise. */
     val anime: Boolean = false,
+    /** Titres alternatifs TMDB (/alternative_titles), ex. nom romaji d'un anime. */
+    val altTitles: List<String> = emptyList(),
 )
 
 data class SearchResult(val title: String, val link: String, val year: String?)

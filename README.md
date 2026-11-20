@@ -33,7 +33,7 @@ TMDB ne distingue pas les animes : RR Streaming les reconnaît (genre Animation,
 
 ### Préparation du flux
 
-Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« Recherche d'une source… » puis « Prêt à lire · source ») : le bouton « Lire » démarre alors presque instantanément. Pour une série, l'épisode proposé par « Lire » est préparé, ainsi que l'épisode survolé. Dans la recherche, chaque résultat indique s'il est **Disponible** ou **Introuvable** sur vos sources. Un flux préparé reste valable 8 minutes ; s'il a expiré entre-temps, il est recherché à nouveau automatiquement.
+Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« Recherche d'une source… » puis « Prêt à lire · source ») : le bouton « Lire » démarre alors presque instantanément. Pour une série, l'épisode proposé par « Lire » est préparé, ainsi que l'épisode survolé. Dans la recherche, chaque résultat indique s'il est **Disponible** ou **Introuvable** sur vos sources : RR Streaming fait une seule recherche par source avec le texte tapé et y compare tous les résultats, puis vérifie individuellement les premiers titres non trouvés (titres alternatifs TMDB compris, utiles pour les noms romaji des animes). Un flux préparé reste valable 8 minutes ; s'il a expiré entre-temps, il est recherché à nouveau automatiquement.
 
 ### Ajouter une source (assistant)
 

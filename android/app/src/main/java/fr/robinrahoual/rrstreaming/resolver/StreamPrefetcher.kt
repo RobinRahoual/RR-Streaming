@@ -4,6 +4,9 @@ import fr.robinrahoual.rrstreaming.sources.MediaKind
 import fr.robinrahoual.rrstreaming.sources.MediaRequest
 import fr.robinrahoual.rrstreaming.sources.SourceRepository
 import fr.robinrahoual.rrstreaming.sources.SourceScraper
+import fr.robinrahoual.rrstreaming.sources.SourceProvider
+import fr.robinrahoual.rrstreaming.sources.SearchResult
+import fr.robinrahoual.rrstreaming.sources.TitleMatcher
 import fr.robinrahoual.rrstreaming.sources.activeProviders
 import fr.robinrahoual.rrstreaming.sources.providersFor
 import kotlinx.coroutines.CancellationException
@@ -11,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -132,8 +137,10 @@ class StreamPrefetcher(
 }
 
 /**
- * Disponibilité légère pour les résultats de recherche : le titre est-il trouvé sur au moins une source ?
- * (recherche seulement, sans extraction du flux). Une nouvelle liste annule les vérifications en attente.
+ * Disponibilité des résultats de recherche (badges « Disponible / Introuvable »), même algorithme que la version bureau :
+ * 1. une seule recherche par source avec le texte tapé, à laquelle tous les résultats TMDB sont comparés ;
+ * 2. seconde passe (titre, titres alternatifs) pour les premiers résultats non trouvés seulement.
+ * Une nouvelle recherche annule la précédente.
  */
 class AvailabilityChecker(
     private val repo: SourceRepository,
@@ -142,55 +149,100 @@ class AvailabilityChecker(
     /** Les titres trouvés ici sont réutilisés par la lecture (pas de nouvelle recherche). */
     private val matches: MatchMemory? = null,
     private val ttlMs: Long = 30 * 60_000,
-    concurrency: Int = 2,
+    private val missTtlMs: Long = 5 * 60_000,
+    private val concurrency: Int = 3,
+    private val secondPass: Int = 6,
+    private val fullPage: Int = 15,
 ) {
     data class Result(val available: Boolean, val provider: String?)
 
     private val cache = ConcurrentHashMap<String, Pair<Long, Result>>()
-    private val semaphore = Semaphore(concurrency)
     private var job: Job? = null
 
     /** Résultats par clé "type:tmdbId", mis à jour au fil des réponses. */
     val results = MutableStateFlow<Map<String, Result>>(emptyMap())
+    /** true pendant la vérification. */
+    val running = MutableStateFlow(false)
 
     fun keyOf(m: MediaRequest) = "${m.type.name.lowercase()}:${m.tmdbId}"
 
-    fun check(list: List<MediaRequest>) {
+    fun check(list: List<MediaRequest>, query: String) {
         job?.cancel()
+        results.value = emptyMap()
         if (repo.store.value.activeProviders().isEmpty()) return
+        val now = System.currentTimeMillis()
+        val pending = list.take(20).filter { m ->
+            val hit = cache[keyOf(m)]
+            val fresh = hit != null && now - hit.first < (if (hit.second.available) ttlMs else missTtlMs)
+            if (fresh) results.update { it + (keyOf(m) to hit!!.second) }
+            !fresh
+        }
+        if (pending.isEmpty()) return
         job = scope.launch {
-            list.take(20).forEach { media ->
-                launch {
-                    val key = keyOf(media)
-                    cache[key]?.takeIf { System.currentTimeMillis() - it.first < ttlMs }?.let { (_, r) ->
-                        results.update { it + (key to r) }
-                        return@launch
-                    }
-                    val r = semaphore.withPermit { lookup(media) }
-                    cache[key] = System.currentTimeMillis() to r
-                    results.update { it + (key to r) }
-                }
-            }
+            running.value = true
+            try { run(query.trim(), pending) } finally { running.value = false }
         }
     }
 
-    /** Quitter la recherche : les vérifications en cours sont abandonnées. */
     fun cancel() { job?.cancel() }
 
     fun clear() { cache.clear(); results.value = emptyMap() }
 
-    private suspend fun lookup(media: MediaRequest): Result {
-        for (p in repo.store.value.providersFor(media)) {
-            try {
-                val best = scraper.search(p, media).best
-                if (best != null) {
-                    matches?.remember(media, p.id, best.result.link, best.result.title)
-                    return Result(true, p.name)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) { /* source injoignable : suivante */ }
+    private fun report(media: MediaRequest, r: Result) {
+        cache[keyOf(media)] = System.currentTimeMillis() to r
+        results.update { it + (keyOf(media) to r) }
+    }
+
+    private suspend fun run(query: String, items: List<MediaRequest>) = coroutineScope {
+        val store = repo.store.value
+        val providers = items.flatMap { store.providersFor(it) }.distinctBy { it.id }
+        val gate = Semaphore(concurrency)
+
+        // 1. Une recherche par source avec le texte tapé.
+        val pages: Map<String, List<SearchResult>> = if (query.isEmpty()) emptyMap() else providers.map { p ->
+            async { p.id to (gate.withPermit { runCatching { scraper.searchQuery(p, query) }.getOrDefault(emptyList()) }) }
+        }.awaitAll().toMap()
+
+        val missing = mutableListOf<MediaRequest>()
+        for (media in items) {
+            val found = store.providersFor(media).firstNotNullOfOrNull { p ->
+                pages[p.id]?.let { TitleMatcher.pickBest(it, media, p.match) }?.let { p to it }
+            }
+            if (found != null) {
+                matches?.remember(media, found.first.id, found.second.result.link, found.second.result.title)
+                report(media, Result(true, found.first.name))
+            } else missing += media
         }
-        return Result(false, null)
+
+        // 2. Seconde passe limitée. Inutile si la page n'était pas pleine et que le titre contient déjà les mots tapés.
+        val words = TitleMatcher.normalize(query).split(" ").filter { it.isNotEmpty() }
+        fun covered(media: MediaRequest, p: SourceProvider): Boolean {
+            val page = pages[p.id] ?: return false
+            if (page.size >= fullPage || words.isEmpty()) return false
+            val t = TitleMatcher.normalize(media.title).split(" ")
+            return words.all { it in t }
+        }
+        missing.drop(secondPass).forEach { report(it, Result(false, null)) }
+        val retryGate = Semaphore(maxOf(1, concurrency - 1))
+        missing.take(secondPass).map { media ->
+            async {
+                retryGate.withPermit {
+                    for (p in store.providersFor(media)) {
+                        if (covered(media, p)) continue
+                        val best = try {
+                            scraper.search(p, media, maxQueries = 2, skipQueries = listOfNotNull(query.ifEmpty { null })).best
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Throwable) { null }
+                        if (best != null) {
+                            matches?.remember(media, p.id, best.result.link, best.result.title)
+                            report(media, Result(true, p.name))
+                            return@withPermit
+                        }
+                    }
+                    report(media, Result(false, null))
+                }
+            }
+        }.awaitAll()
     }
 }

@@ -25,14 +25,25 @@ class SourceScraper(
     data class SearchOutcome(val results: List<SearchResult>, val best: ScoredResult?)
     data class PlayerPage(val url: String, val referer: String?)
 
+    /** Résultats bruts de la page de recherche d'une source pour une requête. */
+    suspend fun searchQuery(provider: SourceProvider, query: String): List<SearchResult> {
+        val s = provider.search
+        val url = fill(s.url, mapOf("baseUrl" to provider.baseUrl.trimEnd('/'), "query" to encode(query)))
+        val doc = fetch(url, provider.headers, provider.render)
+        return doc.select(s.item).mapNotNull { el ->
+            val title = extract(el, s.title) ?: return@mapNotNull null
+            val link = extract(el, s.link) ?: return@mapNotNull null
+            SearchResult(title, link, extract(el, s.year))
+        }
+    }
+
     /**
      * Cherche le média sur la source et renvoie le meilleur résultat (ou null).
-     * Essaie le titre, puis le titre original s'il diffère (beaucoup de sites indexent les films sous leur titre original).
+     * Requêtes : titre, titre original (alphabet latin), titres alternatifs ; arrêt au premier résultat qui correspond.
      */
-    suspend fun search(provider: SourceProvider, media: MediaRequest): SearchOutcome {
-        val s = provider.search
+    suspend fun search(provider: SourceProvider, media: MediaRequest, maxQueries: Int = 3, skipQueries: List<String> = emptyList()): SearchOutcome {
         fun queryFor(title: String) = fill(
-            s.query,
+            provider.search.query,
             mapOf(
                 "title" to title,
                 "originalTitle" to (media.originalTitle ?: media.title),
@@ -40,17 +51,13 @@ class SourceScraper(
                 "type" to if (media.type == MediaKind.TV) "tv" else "movie",
             ),
         ).replace(Regex("\\s+"), " ").trim()
-        val queries = listOfNotNull(queryFor(media.title), media.originalTitle?.let { queryFor(it) }).distinct()
+        val skip = skipQueries.map { TitleMatcher.normalize(it) }.toSet()
+        var queries = TitleMatcher.titlesOf(media).map { queryFor(it) }.distinct().filter { TitleMatcher.normalize(it) !in skip }.take(maxQueries)
+        if (queries.isEmpty() && skip.isEmpty()) queries = listOf(queryFor(media.title))
 
         val all = mutableListOf<SearchResult>()
         for (query in queries) {
-            val url = fill(s.url, mapOf("baseUrl" to provider.baseUrl.trimEnd('/'), "query" to encode(query)))
-            val doc = fetch(url, provider.headers, provider.render)
-            doc.select(s.item).forEach { el ->
-                val title = extract(el, s.title) ?: return@forEach
-                val link = extract(el, s.link) ?: return@forEach
-                if (all.none { it.link == link }) all += SearchResult(title, link, extract(el, s.year))
-            }
+            searchQuery(provider, query).forEach { r -> if (all.none { it.link == r.link }) all += r }
             TitleMatcher.pickBest(all, media, provider.match)?.let { return SearchOutcome(all, it) }
         }
         return SearchOutcome(all, null)

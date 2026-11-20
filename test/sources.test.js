@@ -425,7 +425,7 @@ test('disponibilité : résultats au fil de l\'eau et cache', async () => {
   const results = [];
   let searches = 0;
   const av = new Availability(repo, {
-    emit: (_ch, d) => results.push(d),
+    emit: (ch, d) => { if (ch === 'availability:result') results.push(d); },
     search: async (_p, media) => { searches++; return { best: media.title === 'Dune' ? { link: 'x' } : null }; },
   });
   av.check([{ type: 'movie', tmdbId: 1, title: 'Dune' }, { type: 'movie', tmdbId: 2, title: 'Inconnu' }]);
@@ -507,4 +507,50 @@ test('animes : sources « Animes » en premier pour un anime, ignorées pour les
   assert.deepStrictEqual(ids({ type: 'movie' }), ['films', 'tout']);
   assert.deepStrictEqual(validateProvider({ ...example.providers[0], types: ['anime'] }), []);
   assert.ok(validateProvider({ ...example.providers[0], types: ['manga'] }).length > 0);
+});
+
+test('disponibilité : une seule recherche par source pour toute la liste', async () => {
+  const providers = [
+    { id: 'a', name: 'A', types: ['movie', 'tv'], episodes: {}, match: { minScore: 0.8, yearTolerance: 1 } },
+    { id: 'b', name: 'B', types: ['movie'], match: { minScore: 0.8, yearTolerance: 1 } },
+  ];
+  const repo = { activeProviders: () => providers, providersFor: (m) => providers.filter((p) => p.types.includes(m.type)) };
+  const sitePages = {
+    a: [{ title: 'Naruto Shippuden', link: 'a/shippuden', year: '2007' }, { title: 'Naruto (2002)', link: 'a/naruto' }],
+    b: [{ title: 'Boruto: Naruto the Movie', link: 'b/boruto-film', year: '2015' }],
+  };
+  let pageCalls = 0, titleCalls = 0;
+  const results = [];
+  let done = null;
+  const av = new Availability(repo, {
+    emit: (ch, d) => (ch === 'availability:done' ? (done = d) : results.push(d)),
+    searchQuery: async (p) => { pageCalls++; return sitePages[p.id]; },
+    search: async () => { titleCalls++; return { best: null }; },
+    secondPass: 2,
+  });
+  const items = [
+    { type: 'tv', tmdbId: 1, title: 'Naruto Shippuden', year: '2007' },
+    { type: 'tv', tmdbId: 2, title: 'Naruto', year: '2002' },
+    { type: 'movie', tmdbId: 3, title: 'Boruto: Naruto the Movie', year: '2015' },
+    ...Array.from({ length: 17 }, (_, k) => ({ type: 'movie', tmdbId: 100 + k, title: `Autre ${k}`, year: '2010' })),
+  ];
+  av.check(items, 'naruto');
+  for (let k = 0; k < 50 && !done; k++) await new Promise((r) => setTimeout(r, 5));
+  assert.strictEqual(pageCalls, 2, 'une page de recherche par source');
+  assert.strictEqual(titleCalls, 2 * 2, 'seconde passe limitée aux 2 premiers non trouvés (sur leurs 2 sources)');
+  const byKey = Object.fromEntries(results.map((r) => [r.key, r]));
+  assert.strictEqual(byKey['tv:1'].available, true);
+  assert.strictEqual(byKey['tv:2'].available, true);
+  assert.strictEqual(byKey['movie:3'].provider, 'B');
+  assert.strictEqual(results.length, 20);
+  assert.strictEqual(done.available, 3);
+});
+
+test('correspondance : séries avec saison dans le titre, année de saison, titre romaji', () => {
+  const m = { minScore: 0.8, yearTolerance: 1 };
+  const ok = (media, r, ry) => !!scraper.pickBest([{ title: r, link: 'x', year: ry }], media, m);
+  assert.ok(ok({ type: 'tv', title: 'Jujutsu Kaisen', year: '2020' }, 'Jujutsu Kaisen Saison 2', '2023'), 'année de saison tolérée pour une série');
+  assert.ok(!ok({ type: 'movie', title: 'Dune', year: '2021' }, 'Dune', '1984'), 'mais pas pour un film');
+  assert.ok(ok({ type: 'tv', title: "L'Attaque des Titans", originalTitle: '進撃の巨人', altTitles: ['Shingeki no Kyojin', 'Attack on Titan'], year: '2013' }, 'Shingeki no Kyojin (VOSTFR)'));
+  assert.deepStrictEqual(scraper.titlesOf({ title: 'A', originalTitle: '進撃の巨人', altTitles: ['B'] }), ['A', 'B']);
 });

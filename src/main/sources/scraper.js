@@ -68,8 +68,11 @@ const NOISE = /\b(vf|vff|vfq|vo|vost|vostfr|subfrench|truefrench|french|multi|hd
 const YEAR_IN_TITLE = /\b(19|20)\d{2}\b/;
 
 /** Titre d'un résultat sans année ni mentions de langue/qualité ; renvoie aussi l'année trouvée dans le titre. */
+// « Saison 2 », « Season 3 », « S2 », « Partie 1 » (séries) : le titre de la série suffit pour la correspondance.
+const SEASON_NOISE = /\b(saison|season|s)\s*\d{1,2}\b|\b(partie|part|cour)\s*\d\b|\b\d{1,2}(e|eme|ème|nd|rd|th)?\s*saison\b/gi;
+
 function cleanResultTitle(raw) {
-  const text = String(raw || '');
+  const text = String(raw || '').replace(SEASON_NOISE, ' ');
   const year = (text.match(YEAR_IN_TITLE) || [null])[0];
   const cleaned = normalizeTitle(text.replace(/\((?:19|20)\d{2}\)|\[(?:19|20)\d{2}\]/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' '))
     .replace(NOISE, ' ').replace(/\s+/g, ' ').trim();
@@ -93,17 +96,33 @@ function similarity(tmdbTitle, resultTitle) {
   return Math.min(1, score);
 }
 
-/** Meilleur résultat pour un média TMDB, ou null. */
+const LATIN = /^[\p{Script=Latin}\p{N}\p{P}\p{S}\s]+$/u;
+
+/** Titres à comparer : titre, titre original (s'il est en alphabet latin), titres alternatifs TMDB. */
+function titlesOf(media) {
+  const all = [media.title, media.originalTitle, ...(media.altTitles || [])].filter((t) => t && LATIN.test(t));
+  return [...new Set(all)];
+}
+
+/**
+ * Meilleur résultat pour un média TMDB, ou null.
+ * Films : l'année doit correspondre (± tolérance). Séries : l'année ne sert qu'à départager,
+ * car les sites affichent souvent l'année de la saison et non celle de la première diffusion.
+ */
 function pickBest(results, media, match) {
-  const titles = [media.title, media.originalTitle].filter(Boolean);
+  const titles = titlesOf(media);
+  if (!titles.length) titles.push(media.title);
   let best = null;
   for (const r of results) {
     let score = Math.max(...titles.map((t) => similarity(t, r.title)));
     const ry = r.year || cleanResultTitle(r.title).year;
     if (media.year && ry) {
       const diff = Math.abs(Number(media.year) - Number(ry));
-      if (diff > match.yearTolerance) continue;
       if (diff === 0) score += 0.05; // départage les remakes
+      else if (diff > match.yearTolerance) {
+        if (media.type !== 'tv') continue;
+        score -= 0.04;
+      }
     }
     if (score >= match.minScore && (!best || score > best.score)) best = { ...r, score };
   }
@@ -145,11 +164,25 @@ function setPageRenderer(fn) { pageRenderer = fn; }
 function canRender() { return !!pageRenderer; }
 
 /** HTML brut, ou page rendue (JavaScript exécuté) si la source le demande. */
+// Pages récentes (recherches, liste d'épisodes) : évite de recharger — et surtout de re-rendre — la même page.
+const pageCache = new Map();
+const PAGE_TTL = 3 * 60 * 1000;
+
 async function fetchPage(url, headers = {}, render = false) {
-  if (!render) return fetchHtml(url, headers);
-  if (!pageRenderer) throw new Error('Rendu JavaScript indisponible');
-  return pageRenderer(url, { headers });
+  const key = `${render ? 'R' : 'S'}|${url}|${JSON.stringify(headers || {})}`;
+  const hit = pageCache.get(key);
+  if (hit && Date.now() - hit.at < PAGE_TTL) return hit.promise;
+  let promise;
+  if (!render) promise = fetchHtml(url, headers);
+  else if (!pageRenderer) throw new Error('Rendu JavaScript indisponible');
+  else promise = pageRenderer(url, { headers });
+  pageCache.set(key, { at: Date.now(), promise });
+  promise.catch(() => pageCache.delete(key)); // une erreur n'est pas mise en cache
+  if (pageCache.size > 60) pageCache.delete(pageCache.keys().next().value);
+  return promise;
 }
+
+function clearPageCache() { pageCache.clear(); }
 
 function fill(template, vars) {
   return template.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
@@ -157,32 +190,39 @@ function fill(template, vars) {
 
 // ------------------------------------------------------------ Pipeline par source
 
+/** Résultats bruts de la page de recherche d'une source pour une requête. */
+async function searchQuery(provider, query) {
+  const s = provider.search;
+  const url = fill(s.url, { baseUrl: provider.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
+  const { html, url: finalUrl } = await fetchPage(url, provider.headers, provider.render);
+  const $ = cheerio.load(html);
+  return $(s.item).toArray().map((el) => ({
+    title: extract($, el, s.title, finalUrl),
+    link: extract($, el, s.link, finalUrl),
+    year: extract($, el, s.year, finalUrl),
+  })).filter((r) => r.title && r.link);
+}
+
 /**
  * Recherche le média sur la source et renvoie la meilleure page correspondante.
- * Essaie le titre, puis le titre original s'il diffère (beaucoup de sites indexent les films sous leur titre original).
+ * Requêtes essayées dans l'ordre : titre, titre original (alphabet latin), titres alternatifs TMDB
+ * (ex. nom romaji d'un anime). S'arrête dès qu'un résultat correspond.
  */
-async function search(provider, media) {
-  const s = provider.search;
-  const template = s.query || '{title}';
+async function search(provider, media, { maxQueries = 3, skipQueries = [] } = {}) {
+  const template = provider.search.query || '{title}';
   const queryFor = (title) => fill(template, {
     title,
     originalTitle: media.originalTitle || media.title,
     year: media.year || '',
     type: media.type,
   }).replace(/\s+/g, ' ').trim();
-  const queries = [...new Set([queryFor(media.title), media.originalTitle ? queryFor(media.originalTitle) : null].filter(Boolean))];
+  const skip = new Set(skipQueries.map((q) => normalizeTitle(q)));
+  const queries = [...new Set(titlesOf(media).map(queryFor))].filter((q) => !skip.has(normalizeTitle(q))).slice(0, maxQueries);
+  if (!queries.length && !skip.size) queries.push(queryFor(media.title));
 
   const all = [];
   for (const query of queries) {
-    const url = fill(s.url, { baseUrl: provider.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
-    const { html, url: finalUrl } = await fetchPage(url, provider.headers, provider.render);
-    const $ = cheerio.load(html);
-    const results = $(s.item).toArray().map((el) => ({
-      title: extract($, el, s.title, finalUrl),
-      link: extract($, el, s.link, finalUrl),
-      year: extract($, el, s.year, finalUrl),
-    })).filter((r) => r.title && r.link);
-    for (const r of results) if (!all.some((x) => x.link === r.link)) all.push(r);
+    for (const r of await searchQuery(provider, query)) if (!all.some((x) => x.link === r.link)) all.push(r);
     const best = pickBest(all, media, provider.match);
     if (best) return { results: all, best, query };
   }
@@ -236,6 +276,6 @@ async function playerPage(provider, pageUrl) {
 }
 
 module.exports = {
-  extract, normalizeTitle, similarity, cleanResultTitle, pickBest, fill, search, episodeUrl, playerPage,
-  fetchHtml, fetchPage, setPageRenderer, canRender, DEFAULT_UA,
+  extract, normalizeTitle, similarity, cleanResultTitle, pickBest, titlesOf, fill, search, searchQuery, episodeUrl, playerPage,
+  fetchHtml, fetchPage, clearPageCache, setPageRenderer, canRender, DEFAULT_UA,
 };

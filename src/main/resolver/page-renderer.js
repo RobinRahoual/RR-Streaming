@@ -48,15 +48,19 @@ async function renderHtml(url, { headers = {}, timeoutMs = 20000, userAgent = DE
       new Promise((_, rej) => setTimeout(() => rej(new Error('Délai dépassé au chargement de la page')), timeoutMs)),
     ]);
 
-    // Attendre que les résultats injectés en JavaScript soient en place.
-    let last = -1;
+    // Attendre que le contenu injecté en JavaScript soit en place : la page ne change plus pendant
+    // deux relevés (400 ms), avec au moins 1,2 s après le chargement. Une page sans résultat
+    // (aucun lien) se termine aussi vite qu'une autre au lieu d'attendre le délai maximal.
+    const loadedAt = Date.now();
+    let last = null;
     let stable = 0;
-    while (Date.now() < deadline && stable < 3) {
-      await new Promise((r) => setTimeout(r, 500));
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 400));
       if (wc.isDestroyed()) break;
-      const n = await wc.executeJavaScript('document.querySelectorAll("a[href]").length').catch(() => -1);
-      stable = n === last && n > 0 ? stable + 1 : 0;
-      last = n;
+      const sig = await wc.executeJavaScript('(document.body ? document.body.innerHTML.length : 0) + ":" + document.querySelectorAll("a[href]").length').catch(() => null);
+      stable = sig !== null && sig === last ? stable + 1 : 0;
+      last = sig;
+      if (stable >= 2 && Date.now() - loadedAt >= 1200) break;
     }
     if (wc.isDestroyed()) throw new Error('La page s\'est fermée');
     const html = await wc.executeJavaScript('document.documentElement.outerHTML');

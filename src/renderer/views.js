@@ -223,9 +223,11 @@ const Views = (() => {
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '22'); icon.setAttribute('height', '22');
     icon.innerHTML = '<path fill="currentColor" d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24a1 1 0 0 1-1.41 1.41l-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/>';
+    const availLine = el('div', { class: 'avail-line' });
     view.replaceChildren(el('div', { class: 'page' },
       el('h1', { class: 'page-title' }, 'Recherche'),
       el('div', { class: 'search-box' }, icon, input),
+      availLine,
       results));
 
     let timer = null;
@@ -237,6 +239,13 @@ const Views = (() => {
       art.querySelectorAll('.avail-badge').forEach((b) => b.remove());
       art.append(el('div', { class: 'avail-badge' }, text));
     };
+    const offDone = window.rr.sources.onAvailabilityDone((d) => {
+      if (d.query !== lastQuery) return;
+      const n = d.available != null ? d.available : [...cardsByKey.values()].filter((c) => c.classList.contains('available')).length;
+      availLine.className = 'avail-line done';
+      availLine.replaceChildren(el('span', { class: 'dot' }), `${n} titre${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''} sur vos sources`,
+        d.ms ? el('span', { class: 'muted' }, ` · ${(d.ms / 1000).toFixed(1).replace('.', ',')} s`) : null);
+    });
     const offAvail = window.rr.sources.onAvailability((r) => {
       const card = cardsByKey.get(r.key);
       if (!card) return;
@@ -270,7 +279,7 @@ const Views = (() => {
       const q = input.value.trim();
       lastQuery = q;
       const my = ++token;
-      if (q.length < 2) { results.replaceChildren(); return; }
+      if (q.length < 2) { results.replaceChildren(); availLine.replaceChildren(); return; }
       try {
         const data = await tmdb('/search/multi', { query: q, include_adult: 'false' });
         if (my !== token) return;
@@ -286,8 +295,14 @@ const Views = (() => {
         });
         results.replaceChildren(...(items.length ? cards : [el('p', { class: 'page-sub' }, 'Aucun résultat.')]));
         if (items.length) {
-          call(window.rr.sources.availability(items.slice(0, 20).map(itemMedia))).then((n) => {
-            if (!n) cards.forEach((c) => c.classList.remove('checking'));
+          availLine.className = 'avail-line';
+          availLine.replaceChildren(el('span', { class: 'mini-spinner' }), 'Vérification sur vos sources…');
+          call(window.rr.sources.availability(items.slice(0, 20).map(itemMedia), q)).then((n) => {
+            if (!n) {
+              cards.forEach((c) => c.classList.remove('checking'));
+              availLine.className = 'avail-line done';
+              availLine.replaceChildren('Aucune source active : ajoutez-en dans l\'onglet Sources pour voir ce qui est disponible.');
+            }
           }).catch(() => cards.forEach((c) => c.classList.remove('checking')));
           cards.slice(20).forEach((c) => c.classList.remove('checking'));
         }
@@ -298,7 +313,7 @@ const Views = (() => {
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 320); });
     if (lastQuery) run();
     UI.setFocus(input, { scroll: false });
-    return () => { clearTimeout(timer); clearTimeout(hoverTimer); offAvail(); offStream(); window.rr.sources.cancelAvailability(); };
+    return () => { clearTimeout(timer); clearTimeout(hoverTimer); offAvail(); offDone(); offStream(); window.rr.sources.cancelAvailability(); };
   }
 
   // ---------------------------------------------------------- Fiches

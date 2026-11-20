@@ -341,3 +341,7 @@ select.input { appearance: none; cursor: pointer; }
 .builder-sheet.open { transform: none; }
 .builder-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
 .panel .phone-icon { font-size: 44px; margin-bottom: 12px; }
+
+.avail-line { display: flex; align-items: center; gap: 10px; min-height: 22px; margin: -14px 0 18px; font-size: 15px; color: var(--fg2); }
+.avail-line .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.avail-line .muted { color: var(--fg3); }

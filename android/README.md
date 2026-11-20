@@ -48,8 +48,12 @@ when (val st = stream) {
 // Épisode survolé : rr.prefetcher.prefetch(episodeMedia, slot = "hover")
 ```
 
-Résultats de recherche : `rr.availability.check(medias)` puis `rr.availability.results.collectAsState()`
-(clé `"movie:<tmdbId>"` / `"tv:<tmdbId>"` → `available`, `provider`).
+Résultats de recherche : `rr.availability.check(medias, texteTapé)` puis `rr.availability.results.collectAsState()`
+(clé `"movie:<tmdbId>"` / `"tv:<tmdbId>"` → `available`, `provider` ; `rr.availability.running` pendant la vérification).
+Une seule recherche par source avec le texte tapé, puis une seconde passe limitée aux premiers résultats non trouvés.
+
+Animes et titres non latins : renseigner `MediaRequest.altTitles` avec `/tv/{id}/alternative_titles`
+(ou `/movie/{id}/alternative_titles`) de TMDB — les noms romaji améliorent nettement la correspondance.
 
 ## Chaîne de résolution
 

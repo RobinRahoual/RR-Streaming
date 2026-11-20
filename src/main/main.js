@@ -10,6 +10,8 @@ const { setupUpdater } = require('./updater');
 const { StreamCache } = require('./resolver/stream-cache');
 const { Availability } = require('./resolver/availability');
 const { MatchMemory } = require('./resolver/match-memory');
+const { createEnricher } = require('./resolver/enrich');
+const { resolveMedia } = require('./resolver/pipeline');
 const { renderHtml } = require('./resolver/page-renderer');
 const scraper = require('./sources/scraper');
 
@@ -68,13 +70,19 @@ if (!app.requestSingleInstanceLock()) {
     const updater = setupUpdater(send, () => settings.get().autoUpdate);
 
     const matches = new MatchMemory();
-    const streams = new StreamCache(repo, { emit: send, matches });
-    const availability = new Availability(repo, { emit: send, matches });
+    const enrich = createEnricher(tmdb);
+    const streams = new StreamCache(repo, {
+      emit: send,
+      matches,
+      resolve: async (r, media, opts) => resolveMedia(r, await enrich(media), opts),
+    });
+    const availability = new Availability(repo, { emit: send, matches, enrich });
     repo.on('change', () => {
       send('sources:changed', repo.publicState());
       streams.clear();
       availability.clear();
       matches.clear();
+      scraper.clearPageCache();
     });
     repo.syncIfStale().catch(() => {});
 
@@ -109,7 +117,7 @@ if (!app.requestSingleInstanceLock()) {
     // Préchargement : démarré à l'ouverture d'une fiche, réutilisé par « Lire ».
     handle('stream:prefetch', (media, slot) => streams.prefetch(media, slot));
     handle('stream:status', (media) => streams.status(media));
-    handle('sources:availability', (list) => availability.check(Array.isArray(list) ? list.slice(0, 30) : []));
+    handle('sources:availability', (list, query) => availability.check(Array.isArray(list) ? list.slice(0, 30) : [], query));
     handle('sources:availabilityCancel', () => availability.cancel());
 
     handle('player:resolve', async (media, opts) => {
