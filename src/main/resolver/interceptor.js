@@ -265,6 +265,8 @@ async function resolveStream(pageUrl, opts = {}) {
   wc.on('will-prevent-unload', (e) => e.preventDefault());
   wc.on('render-process-gone', () => failReject(new Error('Le moteur de rendu s\'est arrêté')));
   wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    // Page qui EST le fichier vidéo (.mp4 direct) : sa requête est annulée exprès après capture.
+    if (candidates.size) return;
     if (isMainFrame && code !== -3) failReject(new Error(`Chargement impossible : ${desc}`)); // -3 = ERR_ABORTED (souvent volontaire)
   });
 

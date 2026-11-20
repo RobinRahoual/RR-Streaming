@@ -24,7 +24,8 @@
       "properties": {
         "css": { "type": "string", "description": "Sélecteur CSS relatif à l'élément courant. Chaîne vide = l'élément lui-même." },
         "attr": { "type": "string", "default": "text", "description": "\"text\", \"html\" ou nom d'attribut (href, src, data-src…). Les URLs sont rendues absolues." },
-        "regex": { "type": "string", "description": "Optionnel. Applique la regex sur la valeur ; le groupe 1 est conservé s'il existe." }
+        "regex": { "type": "string", "description": "Optionnel. Applique la regex sur la valeur ; le groupe 1 est conservé s'il existe." },
+        "template": { "type": "string", "pattern": "\\{value\\}", "description": "Optionnel. Construit une adresse à partir de la valeur (ex. \"https://archive.org/details/{value}\")." }
       }
     },
     "provider": {

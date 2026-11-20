@@ -6,7 +6,7 @@ const DEFAULT_UA =
 
 // ------------------------------------------------------------ Extraction
 
-/** Applique un sélecteur { css, attr, regex } à un élément cheerio. */
+/** Applique un sélecteur { css, attr, regex, template } à un élément cheerio. */
 function extract($, el, sel, baseUrl) {
   if (!sel) return null;
   const target = sel.css && sel.css.trim() ? $(el).find(sel.css).first() : $(el);
@@ -27,6 +27,11 @@ function extract($, el, sel, baseUrl) {
     const m = value.match(new RegExp(sel.regex));
     if (!m) return null;
     value = (m[1] ?? m[0]).trim();
+  }
+  // Modèle : construit une adresse à partir d'un identifiant (« https://site/details/{value} »)
+  if (value && sel.template) {
+    value = String(sel.template).replace(/\{value\}/g, encodeURI(value));
+    try { value = new URL(value, baseUrl).toString(); } catch { /* garde la valeur */ }
   }
   return value || null;
 }

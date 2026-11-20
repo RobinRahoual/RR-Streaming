@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response><lst name="responseHeader"><int name="status">0</int></lst><result name="response" numFound="315" start="0">
+  <doc>
+    <str name="identifier">Nosferatu_most_complete_version_93_mins.</str>
+    <str name="title">Nosferatu, eine Symphonie des Grauens (A Symphony of Horror)</str>
+    <str name="year">1922</str>
+  </doc>
+  <doc>
+    <str name="identifier">Nosferatu_DVD_quality</str>
+    <str name="title">Nosferatu_DVD_quality</str>
+  </doc>
+</result></response>

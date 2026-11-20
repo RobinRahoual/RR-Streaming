@@ -145,6 +145,15 @@ test('classifier : régies reconnues pour ne pas suivre leurs redirections', () 
   assert.equal(c.detectAd('https://cdn.example/hls/3/master.m3u8'), false);
 });
 
+test('extract : modèle d\'adresse à partir d\'un identifiant (Internet Archive)', () => {
+  const $ = cheerio.load(fs.readFileSync(path.join(__dirname, 'fixtures/archive-search.xml'), 'utf8'));
+  const el = $('doc').first();
+  const link = scraper.extract($, el, { css: 'str[name=identifier]', template: 'https://archive.org/details/{value}' }, 'https://archive.org/advancedsearch.php');
+  assert.equal(link, 'https://archive.org/details/Nosferatu_most_complete_version_93_mins.');
+  assert.deepEqual(validateProvider({ id: 'ia', name: 'IA', baseUrl: 'https://archive.org', search: { url: '{baseUrl}/s?q={query}', item: 'doc', title: { css: 'a' }, link: { css: 'a', template: 'sans-valeur' } } })
+    .filter((m) => /template/.test(m)).length, 1);
+});
+
 test('rank : HLS master > variantes > DASH > MP4', () => {
   const r = rank([
     { url: 'https://a/f.mp4', type: 'mp4', order: 0 },

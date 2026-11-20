@@ -118,10 +118,11 @@ function validateProvider(raw, path = 'provider') {
 
 function selector(e, s, path, required) {
   if (s == null) { if (required) e.push(`${path} : requis`); return; }
-  if (typeof s !== 'object' || typeof s.css !== 'string') { e.push(`${path} : objet { css, attr?, regex? } attendu`); return; }
+  if (typeof s !== 'object' || typeof s.css !== 'string') { e.push(`${path} : objet { css, attr?, regex?, template? } attendu`); return; }
   if (s.css.trim()) css(e, s.css, `${path}.css`);
   if (s.attr != null && (typeof s.attr !== 'string' || !s.attr.trim())) e.push(`${path}.attr : chaîne non vide attendue`);
   if (s.regex != null) regex(e, s.regex, `${path}.regex`);
+  if (s.template != null && (typeof s.template !== 'string' || !s.template.includes('{value}'))) e.push(`${path}.template : chaîne contenant {value} attendue`);
 }
 
 function css(e, q, path) {
