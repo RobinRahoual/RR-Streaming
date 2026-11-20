@@ -40,6 +40,21 @@ const TARGETS_JS = `(() => { try {
     players.push({ el, score, area: r.width * r.height });
   }
   players.sort((a, b) => b.score - a.score || b.area - a.area);
+  // Zone de lecture sans vidéo ni iframe : grand bloc 16:9 avec une icône (affiche + bouton ▶
+  // dessiné en SVG, sans texte). Un bloc vide (lecteur pas encore injecté) n'est pas une cible.
+  const zones = [];
+  for (const el of document.querySelectorAll('div,section,figure,a,button')) {
+    if (el.closest('header,nav,footer')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 480 || r.width > 2400) continue;
+    const ratio = r.width / r.height;
+    if (ratio < 1.6 || ratio > 1.95 || !visible(el, r)) continue;
+    if (!el.querySelector('svg,button,i,[class*="play" i]')) continue;
+    if (players.some(p => p.el === el || el.contains(p.el) || p.el.contains(el))) continue;
+    if (zones.some(z => z.contains(el))) continue; // garder le bloc le plus extérieur
+    zones.push(el);
+    if (zones.length >= 2) break;
+  }
   const HOSTS = /uqload|voe|vidoza|netu|dood|filemoon|streamtape|vidmoly|upstream|mixdrop|streamwish|lulu|vidhide|supervideo|sibnet|ok\\.ru|okru|filelions|vidguard|streamvid|swish|fsvid|vidzy|luluvdo|darkibox/i;
   const WORDS = /^\\W*(lecteur|serveur|server|player|regarder|voir (le )?(film|l'épisode|episode)|lire|play|watch|vf|vostfr|vo|multi|hd|streaming)\\b/i;
   const CLS = /(^|[-_\\s])(play|watch|lecteur|server|serveur|player-?(btn|button|item|option)|btn-?play|play-?(btn|button|icon))([-_\\s]|$)/i;
@@ -63,7 +78,11 @@ const TARGETS_JS = `(() => { try {
     acts.push({ el, score, top: r.top });
   }
   acts.sort((a, b) => b.score - a.score || a.top - b.top);
-  const out = { lazy, player: [], activate: [] };
+  const out = { lazy, player: [], zones: [], activate: [] };
+  for (const el of zones) {
+    if (!out.player.length && !out.zones.length) el.scrollIntoView({ block: 'center', inline: 'center' });
+    out.zones.push([...point(el.getBoundingClientRect()), 'zone de lecture']);
+  }
   for (const { el } of players.slice(0, 3)) {
     if (!out.player.length) el.scrollIntoView({ block: 'center', inline: 'center' });
     const p = point(el.getBoundingClientRect());
@@ -74,7 +93,7 @@ const TARGETS_JS = `(() => { try {
     out.activate.push([...point(el.getBoundingClientRect()), ((el.innerText || el.className || el.tagName) + '').trim().replace(/\\s+/g, ' ').slice(0, 30)]);
   }
   return out;
-} catch (e) { return { lazy: 0, player: [], activate: [] }; } })()`;
+} catch (e) { return { lazy: 0, player: [], zones: [], activate: [] }; } })()`;
 
 let counter = 0;
 
@@ -277,14 +296,15 @@ async function resolveStream(pageUrl, opts = {}) {
     let t = null;
     try { t = await wc.executeJavaScript(TARGETS_JS); } catch { /* page en cours de changement */ }
     if (wc.isDestroyed() || candidates.size) return;
-    t = t && typeof t === 'object' ? t : { lazy: 0, player: [], activate: [] };
+    t = t && typeof t === 'object' ? t : { lazy: 0, player: [], zones: [], activate: [] };
+    t.zones = t.zones || [];
     if (t.lazy) onLog(`Iframe différée chargée (${t.lazy})`);
     // Lecteur présent : deux clics par cible (le premier est souvent pris par une pub), puis la
     // suivante. Sinon, on clique ce qui le fait apparaître (serveur, affiche « Regarder »).
     let pts;
     let what = 'le lecteur';
     if (t.player.length) pts = [...t.player, [640, 360]];
-    else if (t.activate.length) pts = t.activate;
+    else if (t.zones.length || t.activate.length) pts = [...t.zones.slice(0, 1), ...t.activate];
     else pts = [[640, 360]];
     if (!t.player.length) activations++;
     const idx = t.player.length ? Math.floor((clicks - 1) / 2) % pts.length : Math.floor((activations - 1) / 2) % pts.length;
