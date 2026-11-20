@@ -68,6 +68,24 @@ function createClassifier(opts = {}) {
       if (allowCrossSite || isAllowedHost(u.hostname)) return true;
       return !pageHost || sameSite(u.hostname, pageHost);
     },
+
+    /**
+     * Navigation d'une iframe (lecteur). Le premier chargement de l'iframe est toujours permis
+     * (l'hébergeur du lecteur est souvent un autre site) ; une iframe déjà chargée qui part vers
+     * un autre site juste après un clic est une pub qui détourne le clic.
+     */
+    isFrameNavigationAllowed(targetUrl, frameUrl, { userTriggered = false } = {}) {
+      let u;
+      try { u = new URL(targetUrl); } catch { return true; }
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+      if (isBlockedUrl(targetUrl)) return false;
+      if (allowCrossSite || isAllowedHost(u.hostname)) return true;
+      let current;
+      try { current = new URL(frameUrl); } catch { return true; }
+      if (current.protocol !== 'http:' && current.protocol !== 'https:') return true;
+      if (sameSite(u.hostname, current.hostname)) return true;
+      return !userTriggered;
+    },
   };
 }
 

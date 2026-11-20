@@ -120,6 +120,22 @@ test('classifier : détection et blocage', () => {
   assert.ok(!c.isNavigationAllowed('intent://x', 'www.site.org'));
 });
 
+test('classifier : iframe du lecteur détournée vers une pub après un clic', () => {
+  const c = createClassifier({ allowedHosts: ['cdn-ok.net'] });
+  const frame = 'https://embed.player.to/e/abc';
+  // Premier chargement de l'iframe : toujours permis (hébergeur différent du site)
+  assert.equal(c.isFrameNavigationAllowed('https://embed.player.to/e/abc', 'about:blank', { userTriggered: true }), true);
+  // Même site : permis
+  assert.equal(c.isFrameNavigationAllowed('https://www.player.to/e/abc?srv=2', frame, { userTriggered: true }), true);
+  // Autre site juste après un clic : pub
+  assert.equal(c.isFrameNavigationAllowed('https://win-prize.xyz/lp', frame, { userTriggered: true }), false);
+  // Autre site sans clic (changement de serveur par la page) : permis
+  assert.equal(c.isFrameNavigationAllowed('https://other-embed.cc/e/1', frame, { userTriggered: false }), true);
+  // Régie connue : toujours bloquée ; hôte autorisé par la source : toujours permis
+  assert.equal(c.isFrameNavigationAllowed('https://ads.exoclick.com/x', frame), false);
+  assert.equal(c.isFrameNavigationAllowed('https://cdn-ok.net/p', frame, { userTriggered: true }), true);
+});
+
 test('rank : HLS master > variantes > DASH > MP4', () => {
   const r = rank([
     { url: 'https://a/f.mp4', type: 'mp4', order: 0 },
