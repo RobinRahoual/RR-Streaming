@@ -209,7 +209,7 @@ private fun SubscriptionRow(sub: Subscription, onClick: () -> Unit, onLongClick:
 @Composable
 private fun ProviderRow(entry: ProviderEntry, onClick: () -> Unit) {
     val p = entry.provider
-    val types = p.types.joinToString(" · ") { if (it.name == "MOVIE") "Films" else "Séries" }
+    val types = p.types.joinToString(" · ") { when (it.name) { "MOVIE" -> "Films"; "TV" -> "Séries"; else -> "Animes" } }
     TvRow(
         title = p.name,
         subtitle = "${entry.originName} · $types${p.language?.let { " · ${it.uppercase()}" } ?: ""}",

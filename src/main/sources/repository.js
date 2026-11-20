@@ -51,9 +51,19 @@ class SourceRepository extends EventEmitter {
     return [...byId.values()].sort((a, b) => b.provider.priority - a.provider.priority);
   }
 
-  /** Sources à essayer, dans l'ordre, pour un type de média. */
+  /** Sources actives (toutes, ou celles qui couvrent un type : 'movie', 'tv' ou 'anime'). */
   activeProviders(kind) {
     return this.entries().filter((e) => e.enabled && (!kind || e.provider.types.includes(kind))).map((e) => e.provider);
+  }
+
+  /**
+   * Sources à essayer, dans l'ordre, pour un média TMDB.
+   * Anime (media.anime) : les sources « Animes » d'abord, puis celles du type (films / séries).
+   * Autre titre : uniquement les sources du type ; une source « Animes » seule n'est pas utilisée.
+   * Une série demande une source qui sait trouver les épisodes.
+   */
+  providersFor(media) {
+    return providersFor(this.entries().filter((e) => e.enabled).map((e) => e.provider), media);
   }
 
   publicState() {
@@ -205,6 +215,17 @@ class SourceRepository extends EventEmitter {
   }
 }
 
+function providersFor(providers, media) {
+  const ok = providers.filter((p) => {
+    const types = p.types || [];
+    const covers = types.includes(media.type) || (media.anime && types.includes('anime'));
+    return covers && (media.type !== 'tv' || !!p.episodes);
+  });
+  if (!media.anime) return ok;
+  // Stable : les sources « Animes » d'abord, l'ordre de priorité est conservé dans chaque groupe.
+  return [...ok.filter((p) => p.types.includes('anime')), ...ok.filter((p) => !p.types.includes('anime'))];
+}
+
 function parseAndValidate(raw) {
   let doc;
   try {
@@ -233,4 +254,4 @@ function userMessage(err) {
   return err.message || String(err);
 }
 
-module.exports = { SourceRepository, normalizeUrl };
+module.exports = { SourceRepository, normalizeUrl, providersFor };

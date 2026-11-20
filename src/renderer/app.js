@@ -12,6 +12,7 @@ const App = (() => {
     [/^#\/home$/, () => Views.home(view), 'home'],
     [/^#\/movies$/, () => Views.movies(view), 'movies'],
     [/^#\/tv$/, () => Views.tv(view), 'tv'],
+    [/^#\/anime$/, () => Views.anime(view), 'anime'],
     [/^#\/search$/, () => Views.search(view), 'search'],
     [/^#\/sources$/, () => Views.sources(view), 'sources'],
     [/^#\/settings$/, () => Views.settings(view), 'settings'],

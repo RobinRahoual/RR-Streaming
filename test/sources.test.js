@@ -421,7 +421,7 @@ test('préchargement : ouvrir une autre fiche annule la recherche précédente, 
 });
 
 test('disponibilité : résultats au fil de l\'eau et cache', async () => {
-  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie', 'tv'] }] };
+  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie', 'tv'] }], providersFor: () => [{ id: 'a', name: 'A', types: ['movie', 'tv'] }] };
   const results = [];
   let searches = 0;
   const av = new Availability(repo, {
@@ -467,7 +467,7 @@ test('recherche : essaie le titre original si le titre français ne donne rien',
 test('mémoire des correspondances : la disponibilité alimente la lecture', async () => {
   const { MatchMemory } = require('../src/main/resolver/match-memory');
   const matches = new MatchMemory();
-  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie'] }] };
+  const repo = { activeProviders: () => [{ id: 'a', name: 'A', types: ['movie'] }], providersFor: () => [{ id: 'a', name: 'A', types: ['movie'] }] };
   const av = new Availability(repo, { matches, search: async () => ({ best: { link: 'https://a/film/dune', title: 'Dune' } }) });
   av.check([{ type: 'movie', tmdbId: 7, title: 'Dune' }]);
   await new Promise((r) => setTimeout(r, 20));
@@ -488,4 +488,23 @@ test('préchargement : ouvrir une fiche arrête la préparation en survol d\'un 
   cache.prefetch({ type: 'movie', tmdbId: 3 }, 'hover');
   cache.prefetch({ type: 'movie', tmdbId: 3 }, 'page');
   assert.strictEqual(f.calls[2].signal.aborted, false, 'même titre : la préparation continue');
+});
+
+test('animes : sources « Animes » en premier pour un anime, ignorées pour les autres titres', () => {
+  const { providersFor } = require('../src/main/sources/repository');
+  const ep = { urlTemplate: '{link}/{season}/{episode}' };
+  const list = [
+    { id: 'films', types: ['movie'] },
+    { id: 'series', types: ['tv'], episodes: ep },
+    { id: 'anime', types: ['anime'], episodes: ep },
+    { id: 'anime-films', types: ['anime'] },
+    { id: 'tout', types: ['movie', 'tv', 'anime'], episodes: ep },
+  ];
+  const ids = (m) => providersFor(list, m).map((p) => p.id);
+  assert.deepStrictEqual(ids({ type: 'tv', anime: true }), ['anime', 'tout', 'series']);
+  assert.deepStrictEqual(ids({ type: 'movie', anime: true }), ['anime', 'anime-films', 'tout', 'films']);
+  assert.deepStrictEqual(ids({ type: 'tv' }), ['series', 'tout']);
+  assert.deepStrictEqual(ids({ type: 'movie' }), ['films', 'tout']);
+  assert.deepStrictEqual(validateProvider({ ...example.providers[0], types: ['anime'] }), []);
+  assert.ok(validateProvider({ ...example.providers[0], types: ['manga'] }).length > 0);
 });

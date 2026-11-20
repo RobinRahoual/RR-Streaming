@@ -27,6 +27,10 @@ Catalogue TMDB ──► Fiche (film / épisode) ──► Lire
            5. lecture HLS (hls.js), DASH (dash.js) ou MP4, headers rejoués sur chaque segment
 ```
 
+### Animes
+
+TMDB ne distingue pas les animes : RR Streaming les reconnaît (genre Animation, langue d'origine japonaise). Un onglet **Animes** du catalogue les regroupe. Une source cochée **Animes** est essayée en premier pour ces titres ; une source « Animes » seule n'est pas utilisée pour les autres films et séries.
+
 ### Préparation du flux
 
 Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« Recherche d'une source… » puis « Prêt à lire · source ») : le bouton « Lire » démarre alors presque instantanément. Pour une série, l'épisode proposé par « Lire » est préparé, ainsi que l'épisode survolé. Dans la recherche, chaque résultat indique s'il est **Disponible** ou **Introuvable** sur vos sources. Un flux préparé reste valable 8 minutes ; s'il a expiré entre-temps, il est recherché à nouveau automatiquement.
@@ -35,7 +39,7 @@ Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« 
 
 Onglet **Sources → + Ajouter une source** : l'assistant s'ouvre directement dans l'application (aucun serveur ni navigateur). Depuis un téléphone, « Afficher le QR code » ouvre le même assistant sur le téléphone. L'assistant se fait en cinq étapes, sans JSON ni CSS :
 
-1. **Site** : nom, adresse, films et/ou séries, langue.
+1. **Site** : nom, adresse, films, séries et/ou animes, langue.
 2. **Recherche** : chercher un mot sur le site et coller l'adresse de la page de résultats ; le modèle de recherche est déduit automatiquement.
 3. **Résultats** : RR Streaming analyse la page et propose les listes détectées (affiche, titre, année) ; il suffit de toucher la bonne.
 4. **Séries** : coller l'adresse d'une série et d'un de ses épisodes ; le modèle d'adresse des épisodes est déduit.

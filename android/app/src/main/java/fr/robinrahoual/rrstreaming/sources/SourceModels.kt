@@ -21,8 +21,9 @@ data class SourcesDocument(
     val providers: List<SourceProvider> = emptyList(),
 )
 
+/** Types de contenu d'une source. ANIME : utilisée en priorité pour les animes (animation japonaise selon TMDB). */
 @Serializable
-enum class MediaKind { @SerialName("movie") MOVIE, @SerialName("tv") TV }
+enum class MediaKind { @SerialName("movie") MOVIE, @SerialName("tv") TV, @SerialName("anime") ANIME }
 
 @Serializable
 data class Selector(
@@ -137,7 +138,21 @@ fun SourcesStore.providerEntries(): List<ProviderEntry> {
     return byId.values.sortedByDescending { it.provider.priority }
 }
 
-/** Sources à essayer, dans l'ordre, au lancement d'un média. */
+/**
+ * Sources à essayer, dans l'ordre, pour un média TMDB.
+ * Anime : sources « Animes » d'abord, puis celles du type ; autre titre : uniquement celles du type.
+ * Une série demande une source qui sait trouver les épisodes.
+ */
+fun SourcesStore.providersFor(media: MediaRequest): List<SourceProvider> {
+    val ok = providerEntries().filter { it.enabled }.map { it.provider }.filter { p ->
+        val covers = media.type in p.types || (media.anime && MediaKind.ANIME in p.types)
+        covers && (media.type != MediaKind.TV || p.episodes != null)
+    }
+    if (!media.anime) return ok
+    return ok.filter { MediaKind.ANIME in it.types } + ok.filterNot { MediaKind.ANIME in it.types }
+}
+
+/** Sources actives (toutes, ou celles qui couvrent un type). */
 fun SourcesStore.activeProviders(kind: MediaKind? = null): List<SourceProvider> =
     providerEntries()
         .filter { it.enabled && (kind == null || kind in it.provider.types) }

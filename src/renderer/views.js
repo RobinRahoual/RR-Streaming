@@ -25,9 +25,13 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Lecture
 
-  const movieMedia = (m) => ({ tmdbId: m.id, type: 'movie', title: m.title, originalTitle: m.original_title, year: yearOf(m) });
-  const episodeMedia = (s, season, episode) => ({ tmdbId: s.id, type: 'tv', title: s.name, originalTitle: s.original_name, year: yearOf(s), season, episode });
-  const itemMedia = (it) => ({ tmdbId: it.id, type: it.media_type, title: it.title || it.name, originalTitle: it.original_title || it.original_name, year: yearOf(it) });
+  // Anime selon TMDB : animation (genre 16) d'origine japonaise.
+  const isAnime = (it) => it.original_language === 'ja'
+    && ((it.genre_ids || []).includes(16) || (it.genres || []).some((g) => g.id === 16));
+  const movieMedia = (m) => ({ tmdbId: m.id, type: 'movie', anime: isAnime(m), title: m.title, originalTitle: m.original_title, year: yearOf(m) });
+  const episodeMedia = (s, season, episode) => ({ tmdbId: s.id, type: 'tv', anime: isAnime(s), title: s.name, originalTitle: s.original_name, year: yearOf(s), season, episode });
+  const itemMedia = (it) => ({ tmdbId: it.id, type: it.media_type, anime: isAnime(it), title: it.title || it.name, originalTitle: it.original_title || it.original_name, year: yearOf(it) });
+  const typeLabel = (t) => ({ movie: 'Films', tv: 'Séries', anime: 'Animes' }[t] || t);
   const streamKey = (m) => `${m.type}:${m.tmdbId}:${m.season || 0}:${m.episode || 0}`;
 
   function playMovie(m) {
@@ -115,7 +119,7 @@ const Views = (() => {
       const hadFocus = content.querySelector('.focused');
       const focusIdx = hadFocus ? [...content.querySelectorAll('[data-focus]')].indexOf(hadFocus) : -1;
       content.replaceChildren(
-        el('div', { class: 'hero-kicker' }, type === 'tv' ? 'Série · Tendance' : 'Film · Tendance'),
+        el('div', { class: 'hero-kicker' }, isAnime(it) ? 'Anime · Tendance' : type === 'tv' ? 'Série · Tendance' : 'Film · Tendance'),
         el('h1', { class: 'hero-title' }, it.title || it.name),
         el('div', { class: 'hero-meta' },
           yearOf(it) || null,
@@ -145,12 +149,12 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Pages catalogue
 
-  async function catalog(view, { heroPath, heroType, rows }) {
+  async function catalog(view, { heroPath, heroParams, heroType, rows }) {
     const page = el('div', { class: 'page flush' }, el('div', { class: 'hero skeleton' }), el('div', { class: 'rows' }, skeletonRow(7, true), skeletonRow()));
     view.replaceChildren(page);
     let h = null;
     try {
-      const [heroData, ...rowData] = await Promise.all([tmdb(heroPath), ...rows.map((r) => tmdb(r.path, r.params))]);
+      const [heroData, ...rowData] = await Promise.all([tmdb(heroPath, heroParams), ...rows.map((r) => tmdb(r.path, r.params))]);
       h = hero(heroData.results || [], heroType);
       const rowsNode = el('div', { class: 'rows' }, rows.map((r, k) => {
         const items = (rowData[k].results || []).filter((x) => (x.media_type ? x.media_type !== 'person' : true));
@@ -194,6 +198,19 @@ const Views = (() => {
       { title: 'Populaires', path: '/tv/popular', type: 'tv', wide: true },
       { title: 'En cours de diffusion', path: '/tv/on_the_air', type: 'tv' },
       ...TV_GENRES.map(([id, name]) => ({ title: name, path: '/discover/tv', params: { with_genres: id, sort_by: 'popularity.desc' }, type: 'tv' })),
+    ],
+  });
+
+  const ANIME = { with_genres: 16, with_original_language: 'ja' };
+  const anime = (view) => catalog(view, {
+    heroPath: '/discover/tv', heroParams: { ...ANIME, sort_by: 'popularity.desc' }, heroType: 'tv',
+    rows: [
+      { title: 'Séries animes populaires', path: '/discover/tv', params: { ...ANIME, sort_by: 'popularity.desc' }, type: 'tv', wide: true },
+      { title: 'En cours de diffusion', path: '/discover/tv', params: { ...ANIME, with_status: 0, sort_by: 'popularity.desc' }, type: 'tv' },
+      { title: 'Films d\'animation japonais', path: '/discover/movie', params: { ...ANIME, sort_by: 'popularity.desc' }, type: 'movie' },
+      { title: 'Les mieux notés', path: '/discover/tv', params: { ...ANIME, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }, type: 'tv' },
+      { title: 'Studio Ghibli', path: '/discover/movie', params: { with_companies: 10342, sort_by: 'popularity.desc' }, type: 'movie' },
+      { title: 'Action & aventure', path: '/discover/tv', params: { ...ANIME, with_genres: '16,10759', sort_by: 'popularity.desc' }, type: 'tv' },
     ],
   });
 
@@ -317,7 +334,7 @@ const Views = (() => {
       const status = streamStatus(movieMedia(m));
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(m, {
-          kicker: 'Film',
+          kicker: isAnime(m) ? 'Film · Anime' : 'Film',
           status: status.node,
           metaParts: [yearOf(m), runtime, m.vote_average ? el('span', { class: 'rating' }, `★ ${m.vote_average.toFixed(1)}`) : null],
           buttons: [
@@ -387,7 +404,7 @@ const Views = (() => {
 
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(s, {
-          kicker: 'Série',
+          kicker: isAnime(s) ? 'Série · Anime' : 'Série',
           status: status.node,
           metaParts: [
             yearOf(s),
@@ -547,7 +564,7 @@ const Views = (() => {
 
       const provRows = st.providers.map((e) => {
         const p = e.provider;
-        const types = p.types.map((t) => (t === 'movie' ? 'Films' : 'Séries')).join(' · ');
+        const types = p.types.map(typeLabel).join(' · ');
         const s = sw(e.enabled, (v) => act(S.toggleProvider(p.id, v)));
         s.dataset.key = `p-${p.id}`;
         const local = e.subscriptionId == null;
@@ -663,5 +680,5 @@ const Views = (() => {
     return () => off();
   }
 
-  return { home, movies, tv, search, movieDetail, tvDetail, sources, settings };
+  return { home, movies, tv, anime, search, movieDetail, tvDetail, sources, settings };
 })();

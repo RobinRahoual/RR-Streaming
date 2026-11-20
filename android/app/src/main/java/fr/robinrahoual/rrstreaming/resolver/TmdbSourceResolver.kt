@@ -8,6 +8,7 @@ import fr.robinrahoual.rrstreaming.sources.SourceRepository
 import fr.robinrahoual.rrstreaming.sources.SourceScraper
 import fr.robinrahoual.rrstreaming.sources.SearchResult
 import fr.robinrahoual.rrstreaming.sources.activeProviders
+import fr.robinrahoual.rrstreaming.sources.providersFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -58,7 +59,7 @@ class TmdbSourceResolver(
         require(media.type == MediaKind.MOVIE || (media.season != null && media.episode != null)) {
             "Une série nécessite season et episode"
         }
-        var providers = repo.store.value.activeProviders(media.type)
+        var providers = repo.store.value.providersFor(media)
         if (providers.isEmpty()) return PlaybackResolution.NoSources
         val known = matches?.get(media)
         if (known != null && providers.any { it.id == known.providerId }) {

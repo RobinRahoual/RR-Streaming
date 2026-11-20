@@ -40,10 +40,11 @@
         "language": { "type": "string", "description": "Code ISO 639-1 (fr, en…)." },
         "types": {
           "type": "array",
-          "items": { "enum": ["movie", "tv"] },
+          "items": { "enum": ["movie", "tv", "anime"] },
           "minItems": 1,
           "uniqueItems": true,
-          "default": ["movie", "tv"]
+          "default": ["movie", "tv"],
+          "description": "Contenus couverts. \"anime\" : source utilisée en priorité pour les animes (films et séries d'animation japonaise selon TMDB) ; pour les séries d'animes, \"episodes\" est nécessaire."
         },
         "headers": {
           "type": "object",
@@ -80,7 +81,7 @@
         "episodes": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Requis si types contient \"tv\". urlTemplate et/ou params, ou mode liste : item + episode + link (+ season, pageTemplate, pageParams facultatifs) lus sur la page de la série.",
+          "description": "Requis si types contient \"tv\" ; nécessaire aussi pour les séries d'animes. urlTemplate et/ou params, ou mode liste : item + episode + link (+ season, pageTemplate, pageParams facultatifs) lus sur la page de la série.",
           "properties": {
             "urlTemplate": { "type": "string", "description": "Variables : {link}, {season}, {episode}, {season2}, {episode2} (sur 2 chiffres)." },
             "params": {

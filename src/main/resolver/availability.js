@@ -64,7 +64,7 @@ class Availability {
 
   async #run({ media, key }) {
     let value = { available: false, provider: null };
-    for (const provider of this.repo.activeProviders(media.type)) {
+    for (const provider of this.repo.providersFor(media)) {
       try {
         const { best } = await this.search(provider, media);
         if (best) {

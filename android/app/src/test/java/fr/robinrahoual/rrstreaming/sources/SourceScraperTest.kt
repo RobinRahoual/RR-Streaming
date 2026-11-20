@@ -41,6 +41,26 @@ class TitleMatcherTest {
     }
 }
 
+class AnimeProvidersTest {
+    private fun p(id: String, vararg types: MediaKind, episodes: Boolean = false) = SourceProvider(
+        id = id, name = id, baseUrl = "https://$id.org", types = types.toList(),
+        search = SearchSpec(url = "{baseUrl}/s?q={query}", item = "a", title = Selector(""), link = Selector("", "href")),
+        episodes = if (episodes) EpisodeSpec(urlTemplate = "{link}/{season}/{episode}") else null,
+    )
+
+    @Test fun `sources animes en premier pour un anime, ignorees sinon`() {
+        val store = SourcesStore(localProviders = listOf(
+            p("films", MediaKind.MOVIE), p("series", MediaKind.TV, episodes = true),
+            p("anime", MediaKind.ANIME, episodes = true), p("tout", MediaKind.MOVIE, MediaKind.TV, MediaKind.ANIME, episodes = true),
+        ))
+        fun ids(type: MediaKind, anime: Boolean) = store.providersFor(MediaRequest(1, type, "x", anime = anime)).map { it.id }.toSet()
+        assertEquals(setOf("anime", "tout", "series"), ids(MediaKind.TV, true))
+        assertEquals(setOf("series", "tout"), ids(MediaKind.TV, false))
+        assertEquals(setOf("films", "tout"), ids(MediaKind.MOVIE, false))
+        assertEquals("anime", store.providersFor(MediaRequest(1, MediaKind.TV, "x", anime = true)).first().id)
+    }
+}
+
 class SourceScraperTest {
     private lateinit var server: MockWebServer
     private val scraper = SourceScraper(OkHttpClient())

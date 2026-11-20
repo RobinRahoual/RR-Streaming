@@ -4,11 +4,11 @@ const { resolveStream } = require('./interceptor');
 
 /**
  * Média TMDB → flux lisible.
- * media = { type: 'movie'|'tv', title, originalTitle, year, season?, episode? }
+ * media = { type: 'movie'|'tv', anime?, title, originalTitle, year, season?, episode? }
  * Essaie chaque source active par ordre de priorité ; s'arrête au premier flux trouvé.
  */
 async function resolveMedia(repo, media, { onProgress = () => {}, signal, matches = null } = {}) {
-  let providers = repo.activeProviders(media.type);
+  let providers = repo.providersFor(media);
   // Titre déjà trouvé (onglet Recherche, lecture précédente) : cette source passe en premier, sans nouvelle recherche.
   const known = matches ? matches.get(media) : null;
   if (known && providers.some((p) => p.id === known.providerId)) {

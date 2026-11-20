@@ -320,6 +320,7 @@
       el("input", { type: "checkbox", checked, onchange: (e) => onchange(e.target.checked) }), el("span"));
   }
 
+  const typeLabel = (t) => ({ movie: "Films", tv: "Séries", anime: "Animes" }[t] || t);
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
   // ================================================================ Liste principale
@@ -334,7 +335,7 @@
     if (!s.providers.length) prov.append(el("div", { class: "empty" }, "Aucune source pour l'instant. Touchez « Ajouter une source » pour commencer."));
     for (const e of s.providers) {
       const p = e.provider, local = e.subscriptionId == null;
-      const types = (p.types || []).map((t) => (t === "movie" ? "Films" : "Séries")).join(" · ");
+      const types = (p.types || []).map(typeLabel).join(" · ");
       prov.append(el("div", { class: "row" + (e.enabled ? "" : " dim") },
         el("div", { class: "main" },
           el("div", { class: "title" }, p.name),
@@ -444,12 +445,15 @@
       const hasParams = !!(ep && ep.params && Object.keys(ep.params).length);
       w.epSpec = ep && ep.item ? ep : ep && (ep.urlTemplate || hasParams) ? { ...(ep.urlTemplate ? { urlTemplate: ep.urlTemplate } : {}), ...(hasParams ? { params: ep.params } : {}) } : null;
       w.keepEpisodes = ep && !w.epSpec ? ep : null;
+      w.animeMoviesOnly = w.types.includes("anime") && !w.types.includes("tv") && !ep;
       w.keepIframe = p.player && p.player.iframe || null;
       w.keepPlayer = p.player || {};
       return w;
     }
 
-    const steps = () => ["site", "search", "results", ...(W.types.includes("tv") ? ["episodes"] : []), "player", "finish"];
+    // Les séries d'animes ont aussi besoin des épisodes.
+    const hasEpisodes = () => W.types.includes("tv") || (W.types.includes("anime") && !W.animeMoviesOnly);
+    const steps = () => ["site", "search", "results", ...(hasEpisodes() ? ["episodes"] : []), "player", "finish"];
 
     function open(provider) {
       W = provider ? fromProvider(provider) : fresh();
@@ -630,7 +634,7 @@
       if (W.render) p.render = true;
       if (sel.year) p.search.year = sel.year;
       if (sel.poster) p.search.poster = sel.poster;
-      if (W.types.includes("tv")) p.episodes = W.epSpec || W.keepEpisodes || undefined;
+      if (hasEpisodes()) p.episodes = W.epSpec || W.keepEpisodes || undefined;
       const iframe = W.iframes && W.iframeChoice >= 0 ? W.iframes[W.iframeChoice].selector : (W.iframes ? null : W.keepIframe);
       if (iframe) p.player.iframe = iframe; else delete p.player.iframe;
       return p;
@@ -648,11 +652,13 @@
         const typesBox = el("div", { class: "chips" });
         const drawTypes = () => typesBox.replaceChildren(
           chip("Films", W.types.includes("movie"), () => { flip("movie"); }),
-          chip("Séries", W.types.includes("tv"), () => { flip("tv"); }));
+          chip("Séries", W.types.includes("tv"), () => { flip("tv"); }),
+          chip("Animes", W.types.includes("anime"), () => { flip("anime"); }));
         const flip = (t) => {
           const has = W.types.includes(t);
           if (has && W.types.length === 1) return toast("Choisissez au moins un type de contenu", true);
           W.types = has ? W.types.filter((x) => x !== t) : [...W.types, t];
+          W.animeMoviesOnly = false;
           drawTypes();
         };
         drawTypes();
@@ -768,7 +774,12 @@
         step.append(out);
 
         const btn = footer("Continuer", () => go(1), {
-          secondary: el("button", { class: "btn ghost", onclick: () => { W.types = ["movie"]; W.epSpec = null; index = steps().indexOf("player"); goingBack = false; show(); } }, "Ce site n'a pas de séries"),
+          secondary: el("button", { class: "btn ghost", onclick: () => {
+            const rest = W.types.filter((t) => t !== "tv");
+            W.types = rest.length ? rest : ["movie"];
+            W.animeMoviesOnly = W.types.includes("anime");
+            W.epSpec = null; index = steps().indexOf("player"); goingBack = false; show();
+          } }, "Ce site n'a pas de séries"),
         });
         let listTimer = null, listToken = 0;
         // Adresse d'épisode non déductible (ex. /episode/48213) : lire la liste sur la page de la série.
@@ -817,7 +828,7 @@
       },
 
       player(step) {
-        head(step, W.types.includes("tv") ? "Étape 5" : "Étape 4", "Où est le lecteur vidéo\u00a0?", "Facultatif. Collez l'adresse de la page d'un film ou d'un épisode : RR Streaming repère le lecteur intégré.");
+        head(step, hasEpisodes() ? "Étape 5" : "Étape 4", "Où est le lecteur vidéo\u00a0?", "Facultatif. Collez l'adresse de la page d'un film ou d'un épisode : RR Streaming repère le lecteur intégré.");
         const first = W.analysis && W.analysis.candidates[W.choice] && W.analysis.candidates[W.choice].samples[0];
         if (!W.movieUrl && first) W.movieUrl = first.link;
         const field = inputField("Adresse d'une page de lecture", { type: "url", value: W.movieUrl, placeholder: "https://…", inputmode: "url" }, (v) => { W.movieUrl = v.trim(); });
@@ -876,10 +887,10 @@
         step.append(el("div", { class: "group summary" },
           row("Nom", provider.name, jump("site")),
           row("Site", hostOf(provider.baseUrl), jump("site")),
-          row("Contenus", provider.types.map((t) => (t === "movie" ? "Films" : "Séries")).join(" · "), jump("site")),
+          row("Contenus", provider.types.map(typeLabel).join(" · ") + (W.animeMoviesOnly ? " (films)" : ""), jump("site")),
           row("Recherche", sel.url.replace("{baseUrl}", "").replace("{query}", "…"), jump("search")),
           row("Résultats", [W.analysis && W.analysis.candidates[W.choice] ? `${W.analysis.candidates[W.choice].count} détectés` : "Configurés", sel.year ? "année" : null, sel.poster ? "affiche" : null].filter(Boolean).join(" · "), jump("results")),
-          provider.types.includes("tv") ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate || (provider.episodes.params && Object.keys(provider.episodes.params).length)
+          hasEpisodes() ? row("Épisodes", provider.episodes ? (provider.episodes.urlTemplate || (provider.episodes.params && Object.keys(provider.episodes.params).length)
             ? episodeExample(provider.episodes) : "Liste d'épisodes") : "—", jump("episodes")) : null,
           provider.render ? row("Affichage", "Navigateur invisible (JavaScript)") : null,
           row("Lecteur", iframe ? (W.iframes && W.iframes[W.iframeChoice] ? W.iframes[W.iframeChoice].host : "Iframe configurée") : "Détection automatique", jump("player"))));
@@ -905,7 +916,7 @@
           testBtn.disabled = true; testBtn.textContent = "Recherche…";
           res.replaceChildren();
           try {
-            const r = await api("POST", "/api/builder/test", { provider: buildProvider(), title: W.testTitle, year: W.testYear, type: provider.types[0] });
+            const r = await api("POST", "/api/builder/test", { provider: buildProvider(), title: W.testTitle, year: W.testYear, type: provider.types[0] === "anime" ? (hasEpisodes() ? "tv" : "movie") : provider.types[0] });
             if (r.best) {
               res.append(el("div", { class: "detect ok", style: { wordBreak: "normal" } }, el("b", {}, `Trouvé · correspondance ${Math.round(Math.min(1, r.best.score) * 100)} %`),
                 el("div", { style: { fontSize: "16px", fontWeight: "600" } }, r.best.title, r.best.year ? ` (${r.best.year})` : ""),

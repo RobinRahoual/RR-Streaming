@@ -5,6 +5,7 @@ import fr.robinrahoual.rrstreaming.sources.MediaRequest
 import fr.robinrahoual.rrstreaming.sources.SourceRepository
 import fr.robinrahoual.rrstreaming.sources.SourceScraper
 import fr.robinrahoual.rrstreaming.sources.activeProviders
+import fr.robinrahoual.rrstreaming.sources.providersFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -179,7 +180,7 @@ class AvailabilityChecker(
     fun clear() { cache.clear(); results.value = emptyMap() }
 
     private suspend fun lookup(media: MediaRequest): Result {
-        for (p in repo.store.value.activeProviders(media.type)) {
+        for (p in repo.store.value.providersFor(media)) {
             try {
                 val best = scraper.search(p, media).best
                 if (best != null) {

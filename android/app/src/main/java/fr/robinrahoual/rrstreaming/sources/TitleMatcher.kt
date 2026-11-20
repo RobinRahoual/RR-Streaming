@@ -87,12 +87,15 @@ object TitleMatcher {
 /** Ce qu'on cherche : un film ou un épisode issu de TMDB. */
 data class MediaRequest(
     val tmdbId: Int,
+    /** MOVIE ou TV (TMDB). */
     val type: MediaKind,
     val title: String,
     val originalTitle: String? = null,
     val year: Int? = null,
     val season: Int? = null,
     val episode: Int? = null,
+    /** Anime selon TMDB : genre Animation (16) et langue d'origine japonaise. */
+    val anime: Boolean = false,
 )
 
 data class SearchResult(val title: String, val link: String, val year: String?)

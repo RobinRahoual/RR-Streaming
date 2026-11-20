@@ -53,8 +53,8 @@ function validateProvider(raw, path = 'provider') {
   if (typeof p.name !== 'string' || !p.name.trim()) e.push(`${path}.name : requis`);
   if (!Number.isInteger(p.priority) || p.priority < 0 || p.priority > 100) e.push(`${path}.priority : entier entre 0 et 100`);
   if (!isHttpUrl(p.baseUrl)) e.push(`${path}.baseUrl : URL http(s) invalide`);
-  if (!Array.isArray(p.types) || !p.types.length || p.types.some((t) => t !== 'movie' && t !== 'tv')) {
-    e.push(`${path}.types : valeurs autorisées "movie" et "tv"`);
+  if (!Array.isArray(p.types) || !p.types.length || p.types.some((t) => !['movie', 'tv', 'anime'].includes(t))) {
+    e.push(`${path}.types : valeurs autorisées "movie", "tv" et "anime"`);
   }
   if (p.render != null && typeof p.render !== 'boolean') e.push(`${path}.render : true ou false`);
   if (p.headers && (typeof p.headers !== 'object' || Object.values(p.headers).some((v) => typeof v !== 'string'))) {
