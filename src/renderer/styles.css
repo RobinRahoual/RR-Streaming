@@ -332,3 +332,12 @@ select.input { appearance: none; cursor: pointer; }
   content: ""; position: absolute; top: 12px; left: 12px; z-index: 2; width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; animation: spin .8s linear infinite;
 }
+
+/* -------------------------------------------------- Assistant intégré */
+.builder-sheet {
+  position: fixed; inset: 0; z-index: 70; background: #000;
+  transform: translateY(100%); transition: transform .45s var(--ease);
+}
+.builder-sheet.open { transform: none; }
+.builder-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+.panel .phone-icon { font-size: 44px; margin-bottom: 12px; }

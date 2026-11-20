@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('rr', {
   },
 
   companion: {
+    api: (method, path, raw) => ipcRenderer.invoke('companion:api', method, path, raw),
     start: () => ipcRenderer.invoke('companion:start'),
     stop: () => ipcRenderer.invoke('companion:stop'),
   },

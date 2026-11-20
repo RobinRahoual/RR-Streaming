@@ -60,46 +60,15 @@ class CompanionServer {
     try {
       const url = new URL(req.url, 'http://local');
       const p = url.pathname.replace(/\/+$/, '') || '/';
-      const m = req.method;
-
-      if (m === 'GET' && (p === '/' || p === '/index.html')) {
+      if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
         return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
       }
       if (!p.startsWith('/api/')) throw httpError(404, 'Introuvable');
       this.#authorize(req);
-
-      const seg = p.slice(5).split('/').map(decodeURIComponent);
-      const r = this.repo;
-      const is = (method, ...parts) => m === method && seg.length === parts.length && parts.every((x, i) => x === '*' || x === seg[i]);
-
-      if (is('GET', 'state')) return this.#state(res);
-      if (is('GET', 'export')) return send(res, 200, r.exportLocal(), 'application/json; charset=utf-8');
-      if (is('POST', 'sync')) { await r.syncAll(); return this.#state(res); }
-      if (is('POST', 'subscriptions')) { await r.addSubscription((await body(req)).url); return this.#state(res); }
-      if (is('POST', 'subscriptions', '*', 'sync')) { await r.sync(seg[1]); return this.#state(res); }
-      if (is('POST', 'subscriptions', '*', 'toggle')) { await r.setSubscriptionEnabled(seg[1], (await body(req)).enabled); return this.#state(res); }
-      if (is('DELETE', 'subscriptions', '*')) { await r.removeSubscription(seg[1]); return this.#state(res); }
-      if (is('POST', 'providers')) { await r.upsertLocalProvider(await body(req)); return this.#state(res); }
-      if (is('POST', 'providers', '*', 'toggle')) { await r.setProviderEnabled(seg[1], (await body(req)).enabled); return this.#state(res); }
-      if (is('DELETE', 'providers', '*')) { await r.removeLocalProvider(seg[1]); return this.#state(res); }
-      if (is('POST', 'import')) { await r.importDocument(await rawBody(req)); return this.#state(res); }
-
-      // Assistant de création de source
-      if (is('GET', 'builder')) return sendJson(res, 200, { version: 1 });
-      if (is('POST', 'builder', 'analyze')) {
-        const b = await body(req);
-        return sendJson(res, 200, await builder.analyzeUrl(b.url, b.headers || {}, { render: !!b.render }));
-      }
-      if (is('POST', 'builder', 'episodes')) {
-        const b = await body(req);
-        return sendJson(res, 200, await builder.analyzeEpisodes(b));
-      }
-      if (is('POST', 'builder', 'test')) {
-        const b = await body(req);
-        return sendJson(res, 200, await builder.testProvider(b.provider, b));
-      }
-
-      throw httpError(404, `Route inconnue : ${m} ${p}`);
+      const raw = req.method === 'GET' || req.method === 'DELETE' ? '' : await rawBody(req);
+      const out = await apiDispatch(this.repo, req.method, p, raw);
+      if (typeof out.body === 'string') return send(res, out.status, out.body, 'application/json; charset=utf-8');
+      return sendJson(res, out.status, out.body);
     } catch (err) {
       const status = err.status || 400;
       const details = err instanceof SourceValidationError ? err.errors : [];
@@ -120,8 +89,51 @@ class CompanionServer {
     this.failures = 0;
   }
 
-  #state(res) {
-    sendJson(res, 200, this.repo.publicState());
+}
+
+// ------------------------------------------------------------ API (partagée entre le serveur et l'app)
+
+/**
+ * Traite un appel de l'API compagnon. Utilisé par le serveur HTTP (téléphone) et, sans réseau ni code,
+ * par l'assistant intégré à l'application (IPC).
+ * @returns {Promise<{status:number, body:object|string}>}
+ */
+async function apiDispatch(repo, method, pathname, raw = '') {
+  const p = pathname.replace(/\/+$/, '');
+  if (!p.startsWith('/api/')) throw httpError(404, 'Introuvable');
+  const seg = p.slice(5).split('/').map(decodeURIComponent);
+  const is = (m, ...parts) => method === m && seg.length === parts.length && parts.every((x, i) => x === '*' || x === seg[i]);
+  const json = () => { try { return raw ? JSON.parse(raw) : {}; } catch { throw httpError(400, 'JSON invalide'); } };
+  const state = () => ({ status: 200, body: repo.publicState() });
+  const r = repo;
+
+  if (is('GET', 'state')) return state();
+  if (is('GET', 'export')) return { status: 200, body: r.exportLocal() };
+  if (is('POST', 'sync')) { await r.syncAll(); return state(); }
+  if (is('POST', 'subscriptions')) { await r.addSubscription(json().url); return state(); }
+  if (is('POST', 'subscriptions', '*', 'sync')) { await r.sync(seg[1]); return state(); }
+  if (is('POST', 'subscriptions', '*', 'toggle')) { await r.setSubscriptionEnabled(seg[1], json().enabled); return state(); }
+  if (is('DELETE', 'subscriptions', '*')) { await r.removeSubscription(seg[1]); return state(); }
+  if (is('POST', 'providers')) { await r.upsertLocalProvider(json()); return state(); }
+  if (is('POST', 'providers', '*', 'toggle')) { await r.setProviderEnabled(seg[1], json().enabled); return state(); }
+  if (is('DELETE', 'providers', '*')) { await r.removeLocalProvider(seg[1]); return state(); }
+  if (is('POST', 'import')) { await r.importDocument(raw); return state(); }
+
+  // Assistant de création de source
+  if (is('GET', 'builder')) return { status: 200, body: { version: 1 } };
+  if (is('POST', 'builder', 'analyze')) { const b = json(); return { status: 200, body: await builder.analyzeUrl(b.url, b.headers || {}, { render: !!b.render }) }; }
+  if (is('POST', 'builder', 'episodes')) return { status: 200, body: await builder.analyzeEpisodes(json()) };
+  if (is('POST', 'builder', 'test')) { const b = json(); return { status: 200, body: await builder.testProvider(b.provider, b) }; }
+
+  throw httpError(404, `Route inconnue : ${method} ${p}`);
+}
+
+/** Même chose, mais ne lève jamais : renvoie { status, body } avec l'erreur formatée comme le serveur. */
+async function apiCall(repo, method, pathname, raw) {
+  try {
+    return await apiDispatch(repo, method, pathname, raw);
+  } catch (err) {
+    return { status: err.status || 400, body: { error: err.message || 'Erreur', details: err instanceof SourceValidationError ? err.errors : [] } };
   }
 }
 
@@ -156,11 +168,6 @@ function rawBody(req) {
   });
 }
 
-async function body(req) {
-  const raw = await rawBody(req);
-  try { return raw ? JSON.parse(raw) : {}; } catch { throw httpError(400, 'JSON invalide'); }
-}
-
 function send(res, status, data, type) {
   res.writeHead(status, {
     'Content-Type': type,
@@ -176,4 +183,4 @@ function sendJson(res, status, obj) {
   send(res, status, JSON.stringify(obj), 'application/json; charset=utf-8');
 }
 
-module.exports = { CompanionServer, localIpv4 };
+module.exports = { CompanionServer, localIpv4, apiCall };

@@ -33,7 +33,7 @@ Dès l'ouverture d'une fiche, RR Streaming cherche le flux en arrière-plan (« 
 
 ### Ajouter une source (assistant)
 
-Onglet **Sources → + Ajouter une source** (ou depuis le téléphone via le QR code). L'assistant se fait en cinq étapes, sans JSON ni CSS :
+Onglet **Sources → + Ajouter une source** : l'assistant s'ouvre directement dans l'application (aucun serveur ni navigateur). Depuis un téléphone, « Afficher le QR code » ouvre le même assistant sur le téléphone. L'assistant se fait en cinq étapes, sans JSON ni CSS :
 
 1. **Site** : nom, adresse, films et/ou séries, langue.
 2. **Recherche** : chercher un mot sur le site et coller l'adresse de la page de résultats ; le modèle de recherche est déduit automatiquement.
@@ -47,7 +47,7 @@ Un récapitulatif permet ensuite de choisir la priorité et de **tester la reche
 
 - **Listes** : URL d'un fichier JSON (format décrit dans [`docs/sources.schema.json`](docs/sources.schema.json), exemple dans [`docs/sources.example.json`](docs/sources.example.json)). Synchronisation avec ETag ; une liste en erreur garde ses anciennes sources.
 - **Sources locales** : ajoutées depuis la page compagnon ou importées depuis un fichier. Une source locale remplace celle d'une liste qui a le même `id`.
-- **Page compagnon** : l'onglet Sources affiche un QR code et un code à 6 chiffres. Depuis un téléphone sur le même réseau, on ajoute, modifie ou supprime des sources. Le serveur ne tourne que lorsque l'onglet Sources est ouvert.
+- **Page compagnon (facultative)** : « Afficher le QR code » dans l'onglet Sources démarre un serveur local et affiche un QR code et un code à 6 chiffres. Depuis un téléphone sur le même réseau, on ajoute, modifie ou supprime des sources. Le serveur s'arrête avec « Arrêter » ou en quittant l'onglet.
 
 ### Raccourcis
 

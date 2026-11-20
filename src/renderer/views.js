@@ -416,11 +416,80 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Sources
 
+  /**
+   * Assistant d'ajout intégré à l'application : la page compagnon s'affiche par-dessus l'interface
+   * (mode « embedded ») et appelle l'app directement — pas de serveur, pas de code, pas de navigateur.
+   */
+  function openBuilder(hash = '#add') {
+    const frame = el('iframe', { class: 'builder-frame', src: `../companion/index.html?embedded=1${hash}`, title: 'Assistant d\'ajout de source' });
+    const sheet = el('div', { class: 'builder-sheet' }, frame);
+    const onMessage = async (e) => {
+      if (e.source !== frame.contentWindow) return;
+      const m = e.data || {};
+      if (m.type === 'rr-close') { close(); return; }
+      if (m.type !== 'rr-api') return;
+      let reply;
+      try { reply = await call(window.rr.companion.api(m.method, m.path, m.body)); }
+      catch (err) { reply = { status: 500, body: { error: err.message } }; }
+      if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'rr-api-reply', id: m.id, status: reply.status, data: reply.body }, '*');
+    };
+    let closed = false;
+    function close() {
+      if (closed) return;
+      closed = true;
+      window.removeEventListener('message', onMessage);
+      sheet.classList.remove('open');
+      setTimeout(() => sheet.remove(), 400);
+      UI.focusFirst('#view [data-focus]');
+    }
+    window.addEventListener('message', onMessage);
+    document.body.append(sheet);
+    requestAnimationFrame(() => sheet.classList.add('open'));
+    frame.addEventListener('load', () => frame.focus());
+    return close;
+  }
+
   function sources(view) {
     const S = window.rr.sources;
     const lists = el('div');
-    const wizardLink = el('a', { class: 'pill white', 'data-focus': true, target: '_blank', style: { pointerEvents: 'none', opacity: 0.5 } }, '+ Ajouter une source');
-    const panel = el('aside', { class: 'panel' }, el('h3', {}, 'Gérer depuis un autre appareil'), el('p', {}, 'Démarrage du serveur local…'));
+    let closeBuilder = null;
+    const builder = (hash) => { if (closeBuilder) closeBuilder(); closeBuilder = openBuilder(hash); };
+    const wizardBtn = el('button', { class: 'pill white', 'data-focus': true, onclick: () => builder('#add') }, '+ Ajouter une source');
+
+    // Téléphone : serveur local et QR code seulement à la demande.
+    let serverOn = false;
+    const panel = el('aside', { class: 'panel' });
+    const phoneOff = () => panel.replaceChildren(
+      el('div', { class: 'phone-icon' }, '📱'),
+      el('h3', {}, 'Gérer depuis votre téléphone'),
+      el('p', {}, 'Facultatif. Affiche un QR code pour ajouter ou modifier les sources depuis un téléphone sur le même réseau Wi-Fi.'),
+      el('button', { class: 'pill', 'data-focus': true, onclick: phoneOn }, 'Afficher le QR code'));
+    async function phoneOn() {
+      panel.replaceChildren(el('h3', {}, 'Démarrage…'));
+      try {
+        const info = await call(window.rr.companion.start());
+        serverOn = true;
+        const stop = el('button', { class: 'pill small', 'data-focus': true, style: { marginTop: '20px' }, onclick: () => { window.rr.companion.stop(); serverOn = false; phoneOff(); } }, 'Arrêter');
+        if (!info.url) {
+          panel.replaceChildren(
+            el('h3', {}, 'Réseau local indisponible'),
+            el('p', {}, 'Connectez cet ordinateur à un réseau Wi-Fi ou Ethernet pour gérer les sources depuis un téléphone.'),
+            stop);
+          return;
+        }
+        panel.replaceChildren(
+          el('h3', {}, 'Gérer depuis votre téléphone'),
+          el('p', {}, 'Scannez le code, ou ouvrez l\'adresse dans un navigateur sur le même réseau.'),
+          el('div', { class: 'qr' }, el('img', { src: info.qr, alt: 'QR code' })),
+          el('div', { class: 'url' }, info.url.replace('http://', '')),
+          el('div', { class: 'code-label' }, 'CODE'),
+          el('div', { class: 'code' }, info.code.replace(/(\d{3})(\d{3})/, '$1 $2')),
+          stop);
+      } catch (err) {
+        panel.replaceChildren(el('h3', {}, 'Serveur indisponible'), el('p', {}, err.message));
+      }
+    }
+    phoneOff();
     const urlInput = el('input', { class: 'input', type: 'url', placeholder: 'URL d\'un fichier de sources (.json)', 'data-focus': true, spellcheck: 'false' });
     const fileInput = el('input', { type: 'file', accept: 'application/json,.json', class: 'hidden' });
 
@@ -481,20 +550,24 @@ const Views = (() => {
         const types = p.types.map((t) => (t === 'movie' ? 'Films' : 'Séries')).join(' · ');
         const s = sw(e.enabled, (v) => act(S.toggleProvider(p.id, v)));
         s.dataset.key = `p-${p.id}`;
+        const local = e.subscriptionId == null;
         return el('div', { class: `list-row${e.enabled ? '' : ' dim'}` },
           el('span', { class: `dot ${e.enabled ? 'on' : ''}` }),
           el('div', { class: 'lr-main' },
             el('div', { class: 'lr-title' }, p.name),
             el('div', { class: 'lr-sub' }, `${e.originName} · ${types}${p.language ? ` · ${p.language.toUpperCase()}` : ''} · priorité ${p.priority}`)),
+          local ? el('div', { class: 'lr-actions' },
+            el('button', { class: 'icon-btn', 'data-focus': true, onclick: () => builder(`#edit=${encodeURIComponent(p.id)}`) }, 'Modifier'),
+            el('button', { class: 'icon-btn danger', 'data-focus': true, onclick: () => confirm(`Supprimer « ${p.name} » ?`) && act(window.rr.companion.api('DELETE', `/api/providers/${encodeURIComponent(p.id)}`).then((r) => (r.ok && r.data.status < 400 ? { ok: true, data: r.data.body } : { ok: false, error: (r.data && r.data.body && r.data.body.error) || r.error })), 'Source supprimée') }, 'Supprimer')) : null,
           s);
       });
 
       lists.replaceChildren(
         el('div', { class: 'section-title' }, 'Listes', el('small', {}, String(st.subscriptions.length)), el('span', { class: 'grow' }),
           el('button', { class: 'icon-btn', 'data-focus': true, dataset: { key: 'sync-all' }, onclick: syncAll }, 'Tout synchroniser')),
-        el('div', { class: 'list' }, subRows.length ? subRows : el('div', { class: 'empty' }, 'Aucune liste. Collez l\'URL d\'un fichier JSON ci-dessus, ou scannez le QR code pour la saisir depuis votre téléphone.')),
+        el('div', { class: 'list' }, subRows.length ? subRows : el('div', { class: 'empty' }, 'Aucune liste. Une liste est l\'URL d\'un fichier JSON qui regroupe plusieurs sources : collez-la ci-dessus.')),
         el('div', { class: 'section-title' }, 'Sources', el('small', {}, (() => { const n = st.providers.filter((x) => x.enabled).length; return `${n} active${n > 1 ? 's' : ''} sur ${st.providers.length}`; })())),
-        el('div', { class: 'list' }, provRows.length ? provRows : el('div', { class: 'empty' }, 'Les sources des listes et celles ajoutées depuis la page compagnon apparaîtront ici.')));
+        el('div', { class: 'list' }, provRows.length ? provRows : el('div', { class: 'empty' }, 'Aucune source. Touchez « + Ajouter une source » : l\'assistant vous guide pas à pas.')));
 
       if (focusedKey) {
         const n = lists.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`);
@@ -507,8 +580,8 @@ const Views = (() => {
         el('div', {},
           el('h1', { class: 'page-title' }, 'Sources'),
           el('p', { class: 'page-sub' }, 'Les sources servent uniquement à trouver la lecture d\'un titre du catalogue.'),
-          el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', margin: '0 0 22px' } }, wizardLink,
-            el('span', { style: { color: 'var(--fg2)', fontSize: '15px' } }, 'Assistant pas à pas dans votre navigateur, sans JSON')),
+          el('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', margin: '0 0 22px' } }, wizardBtn,
+            el('span', { style: { color: 'var(--fg2)', fontSize: '15px' } }, 'Assistant pas à pas, sans JSON')),
           el('div', { class: 'field' }, urlInput, addBtn,
             el('button', { class: 'pill', 'data-focus': true, onclick: () => fileInput.click() }, 'Importer…'), fileInput),
           lists),
@@ -517,31 +590,8 @@ const Views = (() => {
     call(S.state()).then(render).catch((err) => toast(err.message, true));
     const off = S.onChange(render);
 
-    call(window.rr.companion.start()).then((info) => {
-      wizardLink.href = `http://localhost:${info.port}/?code=${info.code}#add`;
-      wizardLink.style.pointerEvents = ''; wizardLink.style.opacity = '';
-      if (!info.url) {
-        panel.replaceChildren(
-          el('h3', {}, 'Réseau local indisponible'),
-          el('p', {}, 'Connectez cet ordinateur à un réseau Wi-Fi ou Ethernet pour gérer les sources depuis un téléphone.'),
-          el('div', { class: 'url' }, `localhost:${info.port}`),
-          el('div', { class: 'code-label' }, 'CODE'),
-          el('div', { class: 'code' }, info.code.replace(/(\d{3})(\d{3})/, '$1 $2')),
-          el('div', { class: 'hint' }, 'Accessible depuis un navigateur de cet ordinateur.'));
-        return;
-      }
-      panel.replaceChildren(
-        el('h3', {}, 'Gérer depuis un autre appareil'),
-        el('p', {}, 'Scannez le code avec votre téléphone, ou ouvrez l\'adresse dans un navigateur sur le même réseau.'),
-        el('div', { class: 'qr' }, el('img', { src: info.qr, alt: 'QR code' })),
-        el('div', { class: 'url' }, info.url.replace('http://', '')),
-        el('div', { class: 'code-label' }, 'CODE'),
-        el('div', { class: 'code' }, info.code.replace(/(\d{3})(\d{3})/, '$1 $2')),
-        el('div', { class: 'hint' }, 'Le serveur s\'arrête quand vous quittez cet onglet.'));
-    }).catch((err) => panel.replaceChildren(el('h3', {}, 'Serveur indisponible'), el('p', {}, err.message)));
-
-    UI.setFocus(urlInput, { scroll: false });
-    return () => { off(); window.rr.companion.stop(); };
+    UI.setFocus(wizardBtn, { scroll: false });
+    return () => { off(); if (closeBuilder) closeBuilder(); if (serverOn) window.rr.companion.stop(); };
   }
 
   // ---------------------------------------------------------- Réglages

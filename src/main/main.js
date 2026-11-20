@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, session, shell, Menu } = require('electron'
 const { Settings } = require('./settings');
 const { Tmdb } = require('./tmdb');
 const { SourceRepository } = require('./sources/repository');
-const { CompanionServer } = require('./companion/server');
+const { CompanionServer, apiCall } = require('./companion/server');
 const { installPlaybackHeaders } = require('./playback-headers');
 const { setupUpdater } = require('./updater');
 const { StreamCache } = require('./resolver/stream-cache');
@@ -101,6 +101,8 @@ if (!app.requestSingleInstanceLock()) {
     handle('sources:toggleProvider', (id, v) => repo.setProviderEnabled(id, v).then(() => repo.publicState()));
     handle('sources:import', (raw) => repo.importDocument(raw));
 
+    // Assistant intégré : même API que la page compagnon, sans serveur ni code.
+    handle('companion:api', (method, pathname, raw) => apiCall(repo, String(method), String(pathname), raw == null ? '' : String(raw)));
     handle('companion:start', () => companion.start());
     handle('companion:stop', () => companion.stop());
 
