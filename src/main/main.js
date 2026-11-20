@@ -46,6 +46,10 @@ if (!app.requestSingleInstanceLock()) {
       title: 'RR Streaming',
       icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
       autoHideMenuBar: true,
+      // Barre de titre intégrée à l'interface (boutons fenêtre en surimpression, fond transparent).
+      ...(process.platform === 'darwin'
+        ? {}
+        : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#ffffff', height: 40 } }),
       show: false,
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),

@@ -53,6 +53,10 @@ Un récapitulatif permet ensuite de choisir la priorité et de **tester la reche
 - **Sources locales** : ajoutées depuis la page compagnon ou importées depuis un fichier. Une source locale remplace celle d'une liste qui a le même `id`.
 - **Page compagnon (facultative)** : « Afficher le QR code » dans l'onglet Sources démarre un serveur local et affiche un QR code et un code à 6 chiffres. Depuis un téléphone sur le même réseau, on ajoute, modifie ou supprime des sources. Le serveur s'arrête avec « Arrêter » ou en quittant l'onglet.
 
+### Interface
+
+Inspirée de l'app Apple TV : barre latérale repliée qui s'ouvre quand on y entre (flèche gauche ou « Retour » depuis une page principale), focus blanc, police système. L'accueil montre un carrousel des tendances avec les titres suivants à droite, puis **À suivre** (titres commencés, reprise directe) et **Ma liste** (« + » sur un titre). Une fiche propose ses autres images dans la colonne **Scènes**. Le fond de la fenêtre reprend, flouté, l'image affichée.
+
 ### Raccourcis
 
 | Touche | Action |

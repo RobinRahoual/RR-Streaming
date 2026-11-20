@@ -20,6 +20,7 @@ const Player = (() => {
   let lastDisplay = null;
   let lastResult = null;
   let refreshed = false;
+  let returnFocus = null;
   const keyOf = (m) => `${m.type}:${m.tmdbId}:${m.season || 0}:${m.episode || 0}`;
 
   // ---------------------------------------------------------- Ouverture / fermeture
@@ -29,6 +30,10 @@ const Player = (() => {
     lastMedia = media;
     lastDisplay = display;
     mediaKey = `rr.progress.${media.tmdbId}.${media.season || 0}.${media.episode || 0}`;
+    if (!isOpen()) {
+      const prev = UI.focused();
+      returnFocus = prev && document.contains(prev) ? { node: prev, key: prev.dataset.key } : null;
+    }
     root.classList.remove('hidden', 'playing', 'is-playing', 'idle');
     root.setAttribute('aria-hidden', 'false');
     $('.player-backdrop').style.backgroundImage = display.backdrop ? `url("${display.backdrop}")` : '';
@@ -95,7 +100,14 @@ const Player = (() => {
     root.classList.add('hidden');
     root.setAttribute('aria-hidden', 'true');
     UI.clearFocus();
-    if (typeof App !== 'undefined') App.restoreFocus();
+    window.dispatchEvent(new CustomEvent('rr-player-closed'));
+    // Retour sur la carte ou le bouton qui a lancé la lecture (même si la rangée a été reconstruite).
+    const back = returnFocus && (returnFocus.key
+      ? document.querySelector(`#view [data-key="${CSS.escape(returnFocus.key)}"]`)
+      : (document.contains(returnFocus.node) ? returnFocus.node : null));
+    returnFocus = null;
+    if (back) UI.setFocus(back, { scroll: false });
+    else if (typeof App !== 'undefined') App.restoreFocus();
   }
 
   const isOpen = () => !root.classList.contains('hidden');
@@ -193,7 +205,10 @@ const Player = (() => {
       if (saved > 30 && video.duration && saved < video.duration - 60) video.currentTime = saved;
     } catch { /* stockage indisponible */ }
   });
-  video.addEventListener('ended', () => { try { localStorage.removeItem(mediaKey); } catch { /* ignore */ } });
+  video.addEventListener('ended', () => {
+    try { localStorage.removeItem(mediaKey); } catch { /* ignore */ }
+    if (lastMedia) UI.resume.remove(lastMedia);
+  });
   video.addEventListener('error', () => {
     if (!hls && !dash && isOpen() && video.getAttribute('src')) nextAlternative('MP4 : lecture impossible');
   });
@@ -203,6 +218,7 @@ const Player = (() => {
   function saveProgress() {
     if (!mediaKey || !video.duration || !isFinite(video.duration)) return;
     try { localStorage.setItem(mediaKey, String(Math.floor(video.currentTime))); } catch { /* ignore */ }
+    UI.resume.save(lastMedia, lastDisplay, Math.floor(video.currentTime), Math.floor(video.duration));
   }
 
   const fmt = (s) => {

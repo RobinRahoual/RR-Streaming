@@ -2,9 +2,10 @@
 'use strict';
 
 const Views = (() => {
-  const { el, call, img, posterCard, wideCard, row, skeletonRow, toast } = UI;
+  const { el, call, img, posterCard, wideCard, resumeCard, row, skeletonRow, toast, roundBtn, mylistBtn } = UI;
   const tmdb = (path, params) => call(window.rr.tmdb(path, params));
   const go = (hash) => { location.hash = hash; };
+  const goTo = go;
   const yearOf = (it) => (it.release_date || it.first_air_date || '').slice(0, 4);
   const typeOf = (it, fallback) => it.media_type || fallback;
   const openItem = (it, fallback) => () => go(`#/${typeOf(it, fallback)}/${it.id}`);
@@ -35,15 +36,77 @@ const Views = (() => {
   const streamKey = (m) => `${m.type}:${m.tmdbId}:${m.season || 0}:${m.episode || 0}`;
 
   function playMovie(m) {
-    Player.open(movieMedia(m), { title: m.title, backdrop: img(m.backdrop_path, 'w1280') });
+    Player.open(movieMedia(m), { title: m.title, name: m.title, backdrop: img(m.backdrop_path, 'w1280') });
   }
 
   function playEpisode(show, season, episode, epName) {
     store.set(`rr.lastEp.${show.id}`, { season, episode });
     Player.open(
       episodeMedia(show, season, episode),
-      { title: `${show.name} · S${season} É${episode}${epName ? ` · ${epName}` : ''}`, backdrop: img(show.backdrop_path, 'w1280') },
+      {
+        title: `${show.name} · S${season} É${episode}${epName ? ` · ${epName}` : ''}`,
+        name: show.name,
+        sub: `S${season} · É${episode}`,
+        backdrop: img(show.backdrop_path, 'w1280'),
+      },
     );
+  }
+
+  // ---------------------------------------------------------- Logos de titre et genres (TMDB)
+
+  let catalogLang = null;
+  const langOf = () => catalogLang || (catalogLang = call(window.rr.settings.get())
+    .then((st) => String(st.language || 'fr-FR').slice(0, 2))
+    .catch(() => 'fr'));
+
+  const logoCache = new Map();
+  /** Meilleur logo du titre : langue du catalogue, puis anglais, puis sans texte. */
+  function logoFor(type, id, images) {
+    const k = `${type}:${id}`;
+    if (!logoCache.has(k)) {
+      logoCache.set(k, langOf().then(async (lang) => {
+        const data = images || await tmdb(`/${type}/${id}/images`, { include_image_language: `${lang},en,null` });
+        const logos = (data && data.logos) || [];
+        const pick = (code) => logos.filter((l) => (l.iso_639_1 || null) === code).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0))[0];
+        const best = pick(lang) || pick('en') || pick(null);
+        return best ? img(best.file_path, 'w500') : null;
+      }).catch(() => null));
+    }
+    return logoCache.get(k);
+  }
+  const resetLang = () => { catalogLang = null; logoCache.clear(); genresP = null; };
+
+  /** Remplace le titre texte par le logo dès qu'il est chargé (le texte reste pour l'accessibilité). */
+  function applyLogo(titleNode, promise, label) {
+    promise.then((src) => {
+      if (!src || !titleNode.isConnected) return;
+      const im = new Image();
+      im.className = 'hero-logo';
+      im.alt = '';
+      im.onload = () => {
+        if (!titleNode.isConnected) return;
+        titleNode.setAttribute('aria-label', label);
+        titleNode.classList.add('has-logo');
+        titleNode.replaceChildren(im);
+      };
+      im.src = src;
+    });
+  }
+
+  let genresP = null;
+  const genreNames = () => genresP || (genresP = Promise.all([tmdb('/genre/movie/list'), tmdb('/genre/tv/list')])
+    .then(([a, b]) => new Map([...(a.genres || []), ...(b.genres || [])].map((g) => [g.id, g.name])))
+    .catch(() => { genresP = null; return new Map(); }));
+  const dotted = (parts) => parts.filter(Boolean).flatMap((p, k) => (k ? [el('span', { class: 'sep' }, '·'), p] : [p]));
+
+  /** Note TMDB (sur 10). */
+  const stars = (vote) => (vote ? el('span', { class: 'rating', title: 'Note TMDB sur 10' }, `★ ${vote.toFixed(1).replace('.', ',')}`) : null);
+
+  /** Colonne de vignettes à droite du hero (« Ensuite » sur l'accueil, « Scènes » sur une fiche). */
+  function sideThumb(src, label, onclick, active = false) {
+    return el('button', { class: `scene${active ? ' on' : ''}`, 'data-focus': true, onclick, 'aria-label': label || 'Scène' },
+      el('img', { src, alt: '', loading: 'lazy', draggable: 'false' }),
+      label ? el('span', {}, label) : null);
   }
 
   /**
@@ -91,72 +154,154 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Top shelf
 
-  function hero(items, fallbackType) {
+  const SLIDE_MS = 9000;
+
+  function hero(items, fallbackType, genres = new Map()) {
     const list = items.filter((x) => x.backdrop_path).slice(0, 6);
     if (!list.length) return { node: el('div', { style: { height: '104px' } }), stop() {} };
     const bgA = el('div', { class: 'hero-bg' });
     const bgB = el('div', { class: 'hero-bg', style: { opacity: 0 } });
     const content = el('div', { class: 'hero-content' });
-    const dots = el('div', { class: 'hero-dots' }, list.map(() => el('span')));
-    const node = el('section', { class: 'hero' }, bgA, bgB, content, dots);
+    const go = (k) => { i = (k + list.length) % list.length; show(i); start(); };
+    const dots = el('div', { class: 'hero-dots' }, list.map((it, k) => el('button', {
+      'aria-label': it.title || it.name, tabindex: -1, onclick: () => go(k),
+    })));
+    const upNext = el('div', { class: 'side-list' });
+    const side = el('div', { class: 'hero-side' },
+      el('div', { class: 'side-label' }, 'Ensuite'),
+      upNext,
+      el('div', { class: 'hero-pager' },
+        roundBtn('prev', 'Précédent', () => go(i - 1), { class: 'round-btn small' }),
+        dots,
+        roundBtn('next', 'Suivant', () => go(i + 1), { class: 'round-btn small' })));
+    const node = el('section', { class: 'hero' }, bgA, bgB, content, side);
+    node.style.setProperty('--slide', `${SLIDE_MS}ms`);
     let i = 0;
     let front = bgA;
     let timer = null;
+    // Logos et images préchargés : les transitions restent instantanées.
+    list.forEach((it) => {
+      logoFor(typeOf(it, fallbackType), it.id);
+      new Image().src = img(it.backdrop_path, 'original');
+    });
 
     const show = (idx, first) => {
       const it = list[idx];
       const type = typeOf(it, fallbackType);
       const back = front === bgA ? bgB : bgA;
       const url = img(it.backdrop_path, 'original');
-      if (first) { front.style.backgroundImage = `url("${url}")`; }
+      if (first) { front.style.backgroundImage = `url("${url}")`; front.classList.add('kb'); }
       else {
         back.style.backgroundImage = `url("${url}")`;
+        back.classList.remove('kb'); void back.offsetWidth; back.classList.add('kb');
         back.style.opacity = 1;
         front.style.opacity = 0;
         front = back;
       }
-      [...dots.children].forEach((d, k) => d.classList.toggle('on', k === idx));
-      const hadFocus = content.querySelector('.focused');
-      const focusIdx = hadFocus ? [...content.querySelectorAll('[data-focus]')].indexOf(hadFocus) : -1;
+      UI.ambient.set(img(it.backdrop_path, 'w780'));
+      [...dots.children].forEach((d, k) => {
+        d.classList.remove('on');
+        if (k === idx) { void d.offsetWidth; d.classList.add('on'); }
+      });
+      const hadFocus = document.querySelector('.hero .focused');
+      const focusIdx = hadFocus ? [...node.querySelectorAll('[data-focus]')].indexOf(hadFocus) : -1;
+      const name = it.title || it.name;
+      const titleNode = el('h1', { class: 'hero-title' }, name);
+      const genreList = (it.genre_ids || []).map((g) => genres.get(g)).filter(Boolean).slice(0, 2);
       content.replaceChildren(
-        el('div', { class: 'hero-kicker' }, isAnime(it) ? 'Anime · Tendance' : type === 'tv' ? 'Série · Tendance' : 'Film · Tendance'),
-        el('h1', { class: 'hero-title' }, it.title || it.name),
-        el('div', { class: 'hero-meta' },
-          yearOf(it) || null,
-          it.vote_average ? el('span', { class: 'rating' }, `★ ${it.vote_average.toFixed(1)}`) : null,
-          el('span', { class: 'badge' }, 'HD')),
+        el('div', { class: 'hero-kicker' }, isAnime(it) ? 'Anime' : type === 'tv' ? 'Série' : 'Film', el('i'), 'Tendance'),
+        titleNode,
+        el('div', { class: 'hero-meta' }, dotted([stars(it.vote_average), yearOf(it) || null, ...genreList])),
         el('p', { class: 'hero-overview' }, it.overview || ''),
         el('div', { class: 'hero-actions' },
-          el('button', { class: 'pill white', 'data-focus': true, onclick: () => (type === 'movie' ? playMovie(it) : go(`#/tv/${it.id}`)) }, ICON_PLAY(), type === 'movie' ? 'Lire' : 'Épisodes'),
-          el('button', { class: 'pill', 'data-focus': true, onclick: () => go(`#/${type}/${it.id}`) }, 'Plus d\'infos')));
+          el('button', { class: 'pill accent', 'data-focus': true, onclick: () => (type === 'movie' ? playMovie(it) : goTo(`#/tv/${it.id}`)) }, ICON_PLAY(), type === 'movie' ? 'Lire' : 'Épisodes'),
+          mylistBtn(it, type),
+          roundBtn('info', 'Plus d\'infos', () => goTo(`#/${type}/${it.id}`))));
+      // Les trois titres suivants du carrousel, à la manière d'une colonne « scènes ».
+      upNext.replaceChildren(...[1, 2, 3].filter((d) => d < list.length).map((d) => {
+        const k = (idx + d) % list.length;
+        const nx = list[k];
+        return sideThumb(img(nx.backdrop_path, 'w300'), nx.title || nx.name, () => go(k));
+      }));
+      applyLogo(titleNode, logoFor(type, it.id), name);
       content.style.animation = 'none';
       void content.offsetWidth;
       content.style.animation = '';
-      if (focusIdx >= 0) UI.setFocus(content.querySelectorAll('[data-focus]')[focusIdx], { scroll: false });
+      if (focusIdx >= 0) UI.setFocus(node.querySelectorAll('[data-focus]')[focusIdx], { scroll: false });
     };
     show(0, true);
-    const start = () => {
+
+    // Pause pendant le survol, la lecture ou quand la fenêtre est cachée (la jauge du point actif s'arrête aussi).
+    let elapsed = 0;
+    let last = Date.now();
+    const paused = () => document.hidden || Player.isOpen() || node.matches(':hover');
+    function start() {
       clearInterval(timer);
+      elapsed = 0;
+      last = Date.now();
       timer = setInterval(() => {
-        if (document.hidden || Player.isOpen() || node.matches(':hover')) return;
-        i = (i + 1) % list.length;
-        show(i);
-      }, 9000);
-    };
+        const now = Date.now();
+        const p = paused();
+        node.classList.toggle('paused', p);
+        if (!p) elapsed += now - last;
+        last = now;
+        if (elapsed >= SLIDE_MS) go(i + 1);
+      }, 200);
+    }
     start();
     return { node, stop: () => clearInterval(timer) };
   }
 
   // ---------------------------------------------------------- Pages catalogue
 
-  async function catalog(view, { heroPath, heroParams, heroType, rows }) {
+  /** Rangée « À suivre » : reprend directement la lecture, mise à jour à la fermeture du lecteur. */
+  function continueRow() {
+    const build = () => row('À suivre', UI.resume.list().map((e) => resumeCard(e, () => Player.open(e.media, e.display))), 'continue');
+    const slot = el('div', { class: 'continue-slot' });
+    const fill = () => slot.replaceChildren(...[build()].filter(Boolean));
+    fill();
+    window.addEventListener('rr-player-closed', fill);
+    return { node: slot, stop: () => window.removeEventListener('rr-player-closed', fill) };
+  }
+
+  /** Rangée « Ma liste », reconstruite quand la liste change. */
+  function myListRow() {
+    const slot = el('div', { class: 'mylist-slot' });
+    const fill = () => slot.replaceChildren(...[row('Ma liste', UI.mylist.list().map((it) => posterCard(it, openItem(it))))].filter(Boolean));
+    fill();
+    window.addEventListener('rr-mylist', fill);
+    return { node: slot, stop: () => window.removeEventListener('rr-mylist', fill) };
+  }
+
+  function mylist(view) {
+    const grid = el('div', { class: 'grid' });
+    const fill = () => {
+      const items = UI.mylist.list();
+      grid.replaceChildren(...(items.length ? items.map((it) => posterCard(it, openItem(it)))
+        : [el('div', { class: 'empty', style: { gridColumn: '1 / -1' } }, 'Votre liste est vide. Touchez « + » sur un film ou une série pour l\'y ajouter.')]));
+    };
+    fill();
+    window.addEventListener('rr-mylist', fill);
+    view.replaceChildren(el('div', { class: 'page' },
+      el('h1', { class: 'page-title' }, 'Ma liste'),
+      el('p', { class: 'page-sub' }, 'Films et séries mis de côté, du plus récent au plus ancien.'),
+      grid));
+    UI.focusFirst('#view [data-focus]');
+    return () => window.removeEventListener('rr-mylist', fill);
+  }
+
+  async function catalog(view, { heroPath, heroParams, heroType, rows, resume = false }) {
     const page = el('div', { class: 'page flush' }, el('div', { class: 'hero skeleton' }), el('div', { class: 'rows' }, skeletonRow(7, true), skeletonRow()));
     view.replaceChildren(page);
     let h = null;
+    let cont = null;
+    let mine = null;
     try {
-      const [heroData, ...rowData] = await Promise.all([tmdb(heroPath, heroParams), ...rows.map((r) => tmdb(r.path, r.params))]);
-      h = hero(heroData.results || [], heroType);
-      const rowsNode = el('div', { class: 'rows' }, rows.map((r, k) => {
+      const [genres, heroData, ...rowData] = await Promise.all([genreNames(), tmdb(heroPath, heroParams), ...rows.map((r) => tmdb(r.path, r.params))]);
+      h = hero(heroData.results || [], heroType, genres);
+      cont = resume ? continueRow() : null;
+      mine = resume ? myListRow() : null;
+      const rowsNode = el('div', { class: 'rows' }, cont && cont.node, mine && mine.node, rows.map((r, k) => {
         const items = (rowData[k].results || []).filter((x) => (x.media_type ? x.media_type !== 'person' : true));
         return row(r.title, items.map((it) => (r.wide ? wideCard(it, openItem(it, r.type)) : posterCard(it, openItem(it, r.type)))));
       }));
@@ -166,10 +311,11 @@ const Views = (() => {
       view.replaceChildren(errorPage(err));
       UI.focusFirst();
     }
-    return () => h && h.stop();
+    return () => { if (h) h.stop(); if (cont) cont.stop(); if (mine) mine.stop(); };
   }
 
   const home = (view) => catalog(view, {
+    resume: true,
     heroPath: '/trending/all/day',
     rows: [
       { title: 'À la une cette semaine', path: '/trending/all/week', wide: true },
@@ -397,14 +543,42 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Fiches
 
-  function detailShell(item, { kicker, metaParts, buttons, status = null }) {
+  function detailShell(item, { type, kicker, metaParts, buttons, status = null }) {
     const genres = (item.genres || []).map((g) => g.name).join(' · ');
+    const name = item.title || item.name;
+    const titleNode = el('h1', { class: 'hero-title' }, name);
+    applyLogo(titleNode, logoFor(type, item.id, item.images), name);
+    if (item.backdrop_path) UI.ambient.set(img(item.backdrop_path, 'w780'));
+
+    // Scènes : autres images du titre ; un clic les passe en fond.
+    const bgs = [el('div', { class: 'hero-bg kb', style: { backgroundImage: item.backdrop_path ? `url("${img(item.backdrop_path, 'original')}")` : '' } }),
+      el('div', { class: 'hero-bg', style: { opacity: 0 } })];
+    let front = 0;
+    const setBg = (path, btn) => {
+      const nx = bgs[1 - front];
+      nx.style.backgroundImage = `url("${img(path, 'original')}")`;
+      nx.classList.remove('kb'); void nx.offsetWidth; nx.classList.add('kb');
+      nx.style.opacity = 1; bgs[front].style.opacity = 0; front = 1 - front;
+      btn.parentNode.querySelectorAll('.scene').forEach((b) => b.classList.toggle('on', b === btn));
+      UI.ambient.set(img(path, 'w780'));
+    };
+    const shots = [item.backdrop_path, ...((item.images && item.images.backdrops) || [])
+      .filter((b) => !b.iso_639_1).sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0)).map((b) => b.file_path)]
+      .filter((p, k, a) => p && a.indexOf(p) === k).slice(0, 3);
+    const side = shots.length > 1 ? el('div', { class: 'hero-side' },
+      el('div', { class: 'side-label' }, 'Scènes'),
+      el('div', { class: 'side-list' }, shots.map((p, k) => {
+        const b = sideThumb(img(p, 'w300'), null, () => setBg(p, b), k === 0);
+        return b;
+      }))) : null;
+
     return el('section', { class: 'hero' },
-      el('div', { class: 'hero-bg', style: { backgroundImage: item.backdrop_path ? `url("${img(item.backdrop_path, 'original')}")` : '' } }),
+      ...bgs,
+      side,
       el('div', { class: 'hero-content' },
         el('div', { class: 'hero-kicker' }, kicker),
-        el('h1', { class: 'hero-title' }, item.title || item.name),
-        el('div', { class: 'hero-meta' }, metaParts.filter(Boolean).flatMap((p, k) => (k ? [el('span', {}, '·'), p] : [p]))),
+        titleNode,
+        el('div', { class: 'hero-meta' }, dotted(metaParts)),
         genres ? el('div', { class: 'genres' }, genres) : null,
         el('p', { class: 'hero-overview', style: { WebkitLineClamp: 5 } }, item.overview || 'Aucun synopsis disponible.'),
         el('div', { class: 'hero-actions' }, buttons),
@@ -422,18 +596,20 @@ const Views = (() => {
   async function movieDetail(view, id) {
     view.replaceChildren(el('div', { class: 'page flush detail' }, el('div', { class: 'hero skeleton' })));
     try {
-      const m = await tmdb(`/movie/${id}`, { append_to_response: 'credits,recommendations' });
+      const lang = await langOf();
+      const m = await tmdb(`/movie/${id}`, { append_to_response: 'credits,recommendations,images', include_image_language: `${lang},en,null` });
       const runtime = m.runtime ? `${Math.floor(m.runtime / 60)} h ${String(m.runtime % 60).padStart(2, '0')}` : null;
       const resume = store.get(`rr.progress.${m.id}.0.0`);
       const status = streamStatus(movieMedia(m));
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(m, {
+          type: 'movie',
           kicker: isAnime(m) ? 'Film · Anime' : 'Film',
           status: status.node,
-          metaParts: [yearOf(m), runtime, m.vote_average ? el('span', { class: 'rating' }, `★ ${m.vote_average.toFixed(1)}`) : null],
+          metaParts: [stars(m.vote_average), yearOf(m), runtime],
           buttons: [
-            el('button', { class: 'pill white', 'data-focus': true, onclick: () => playMovie(m) }, ICON_PLAY(), resume > 30 ? 'Reprendre' : 'Lire'),
-            el('button', { class: 'pill', 'data-focus': true, onclick: () => history.back() }, 'Retour'),
+            el('button', { class: 'pill accent', 'data-focus': true, onclick: () => playMovie(m) }, ICON_PLAY(), resume > 30 ? 'Reprendre' : 'Lire'),
+            mylistBtn(m, 'movie'),
           ],
         }),
         el('div', { class: 'detail-below' },
@@ -451,7 +627,8 @@ const Views = (() => {
   async function tvDetail(view, id) {
     view.replaceChildren(el('div', { class: 'page flush detail' }, el('div', { class: 'hero skeleton' })));
     try {
-      const s = await tmdb(`/tv/${id}`, { append_to_response: 'credits,recommendations' });
+      const lang = await langOf();
+      const s = await tmdb(`/tv/${id}`, { append_to_response: 'credits,recommendations,images', include_image_language: `${lang},en,null` });
       const seasons = (s.seasons || []).filter((x) => x.season_number > 0 && x.episode_count > 0);
       if (!seasons.length && s.seasons && s.seasons.length) seasons.push(...s.seasons);
       const last = store.get(`rr.lastEp.${s.id}`);
@@ -498,17 +675,18 @@ const Views = (() => {
 
       view.replaceChildren(el('div', { class: 'page flush detail' },
         detailShell(s, {
+          type: 'tv',
           kicker: isAnime(s) ? 'Série · Anime' : 'Série',
           status: status.node,
           metaParts: [
+            stars(s.vote_average),
             yearOf(s),
             s.number_of_seasons ? `${s.number_of_seasons} saison${s.number_of_seasons > 1 ? 's' : ''}` : null,
-            s.vote_average ? el('span', { class: 'rating' }, `★ ${s.vote_average.toFixed(1)}`) : null,
           ],
           buttons: [
-            el('button', { class: 'pill white', 'data-focus': true, onclick: () => playEpisode(s, start.season, start.episode) },
+            el('button', { class: 'pill accent', 'data-focus': true, onclick: () => playEpisode(s, start.season, start.episode) },
               ICON_PLAY(), `${last ? 'Reprendre' : 'Lire'} S${start.season} É${start.episode}`),
-            el('button', { class: 'pill', 'data-focus': true, onclick: () => history.back() }, 'Retour'),
+            mylistBtn(s, 'tv'),
           ],
         }),
         el('div', { class: 'detail-below' },
@@ -742,6 +920,7 @@ const Views = (() => {
 
     const save = async () => {
       await call(window.rr.settings.set({ tmdbKey: key.value, language: lang.value }));
+      resetLang();
       try { await call(window.rr.tmdb('/configuration')); toast('Clé TMDB valide, catalogue disponible'); }
       catch (err) { toast(err.message, true); }
     };
@@ -774,5 +953,5 @@ const Views = (() => {
     return () => off();
   }
 
-  return { home, movies, tv, anime, search, movieDetail, tvDetail, sources, settings };
+  return { home, movies, tv, anime, search, mylist, movieDetail, tvDetail, sources, settings };
 })();

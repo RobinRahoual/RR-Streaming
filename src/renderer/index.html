@@ -8,23 +8,33 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <nav id="nav">
-    <div class="brand"><span class="logo">RR</span><span class="brand-name">Streaming</span></div>
-    <div class="tabs" role="tablist">
-      <a class="tab" data-focus href="#/home" data-route="home">Accueil</a>
-      <a class="tab" data-focus href="#/movies" data-route="movies">Films</a>
-      <a class="tab" data-focus href="#/tv" data-route="tv">Séries</a>
-      <a class="tab" data-focus href="#/anime" data-route="anime">Animes</a>
-      <a class="tab" data-focus href="#/search" data-route="search" aria-label="Recherche">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 0 1 5.96 12.06l4.24 4.24a1 1 0 0 1-1.41 1.41l-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
-      </a>
-      <a class="tab" data-focus href="#/sources" data-route="sources">Sources</a>
-      <a class="tab" data-focus href="#/settings" data-route="settings">Réglages</a>
-    </div>
-    <div class="nav-spacer"></div>
-  </nav>
+  <div id="ambient" aria-hidden="true"><div class="amb"></div><div class="amb"></div></div>
 
-  <main id="view"></main>
+  <aside id="nav">
+    <div class="brand"><span class="logo">RR</span><span class="brand-name">Streaming</span></div>
+    <div class="nav-label">Menu</div>
+    <a class="tab" data-focus href="#/home" data-route="home"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.5 12 4l8.5 6.5V20a1 1 0 0 1-1 1h-5v-6h-5v6h-5a1 1 0 0 1-1-1z"/></svg><span>Accueil</span></a>
+    <a class="tab" data-focus href="#/movies" data-route="movies"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></svg><span>Films</span></a>
+    <a class="tab" data-focus href="#/tv" data-route="tv"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="m8.5 2.5 3.5 3.5 3.5-3.5"/></svg><span>Séries</span></a>
+    <a class="tab" data-focus href="#/anime" data-route="anime"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.2 5.3 5.3 2.2-5.3 2.2-2.2 5.3-2.2-5.3L4.5 11l5.3-2.2z"/><path d="M19 3v3M17.5 4.5h3"/></svg><span>Animes</span></a>
+    <a class="tab" data-focus href="#/search" data-route="search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><span>Recherche</span></a>
+    <div class="nav-sep"></div>
+    <div class="nav-label">Bibliothèque</div>
+    <a class="tab" data-focus href="#/mylist" data-route="mylist"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11a1 1 0 0 1 1 1V21l-6.5-4.2L5.5 21V4.5a1 1 0 0 1 1-1z"/></svg><span>Ma liste</span></a>
+    <a class="tab" data-focus href="#/sources" data-route="sources"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 4.8-9 4.8-9-4.8z"/><path d="m3 12.2 9 4.8 9-4.8M3 16.6l9 4.8 9-4.8"/></svg><span>Sources</span></a>
+    <div class="nav-sep"></div>
+    <a class="tab" data-focus href="#/settings" data-route="settings"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg><span>Réglages</span></a>
+    <div class="nav-spacer"></div>
+  </aside>
+
+  <div id="shell">
+    <header id="topbar">
+      <button class="round-btn tb-back" data-focus aria-label="Retour"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7"/></svg></button>
+      <a class="search-pill" data-focus href="#/search"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><span>Rechercher un film, une série, un anime…</span></a>
+      <div class="tb-spacer"></div>
+    </header>
+    <main id="view"></main>
+  </div>
 
   <div id="player" class="hidden" aria-hidden="true">
     <div class="player-backdrop"></div>
