@@ -140,6 +140,9 @@ test('classifier : régies reconnues pour ne pas suivre leurs redirections', () 
   const c = createClassifier({});
   assert.equal(c.detectAd('https://www.popads.net/x'), true);
   assert.equal(c.detectAd('https://nouveau-domaine.example/film/1'), false);
+  assert.equal(c.detectAd('https://hiibel.com/3/b4dcd5708cb46608702114329f33d6e7'), true);
+  assert.equal(c.detectAd('https://interlinecustomroofingllc.com/4/24bdb551916d1fa018ea473a1138d6af?refer'), true);
+  assert.equal(c.detectAd('https://cdn.example/hls/3/master.m3u8'), false);
 });
 
 test('rank : HLS master > variantes > DASH > MP4', () => {

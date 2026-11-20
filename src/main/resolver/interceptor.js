@@ -9,36 +9,72 @@ const AUTOPLAY_JS = `(() => { try {
     .forEach(s => { const b = document.querySelector(s); if (b) b.click(); });
 } catch (e) {} })();`;
 
-// Cibles de clic dans la page, de la plus probable à la moins probable : vidéo, iframe de lecteur
-// (plein écran autorisé, adresse « embed / player »), zone « player ». Les formats publicitaires
-// standard (300×250, 728×90, 160×600…) et les petits éléments sont écartés.
+// Analyse de la page avant chaque clic :
+// - iframes différées (data-src sans src) : chargées directement ;
+// - `player` : lecteurs déjà présents, du plus probable au moins probable (vidéo, iframe de
+//   lecteur, zone « player »), formats publicitaires standard et bandes-annonces écartés ;
+// - `activate` : ce qui fait apparaître le lecteur (choix du serveur « Uqload / VF / Lecteur 1 »,
+//   affiche « Regarder », bouton play), utilisé quand aucun lecteur n'est encore là.
 const TARGETS_JS = `(() => { try {
   const AD = [[300,250],[336,280],[728,90],[970,90],[970,250],[160,600],[300,600],[320,50],[320,100],[468,60]];
   const isAd = (w, h) => AD.some(([a, b]) => Math.abs(w - a) <= 4 && Math.abs(h - b) <= 4);
-  const out = [];
+  const TRAILER = /youtube\\.|youtu\\.be|vimeo\\.|dailymotion\\.|trailer|bande-?annonce/i;
+  const visible = (el, r) => { const st = getComputedStyle(el); return r.width > 0 && r.height > 0 && st.display !== 'none' && st.visibility !== 'hidden' && +st.opacity !== 0; };
+  const point = (r) => [Math.round(Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 2)), Math.round(Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 2))];
+  let lazy = 0;
+  for (const f of document.querySelectorAll('iframe')) {
+    const src = f.getAttribute('src');
+    const data = f.getAttribute('data-src') || f.getAttribute('data-lazy-src') || f.getAttribute('data-url');
+    if (data && /^(https?:)?\\/\\//.test(data) && (!src || src === 'about:blank' || src.startsWith('data:'))) { f.src = data; lazy++; }
+  }
+  const players = [];
   for (const el of document.querySelectorAll('video,iframe,embed,object,[id*="player" i],[class*="player" i]')) {
     const r = el.getBoundingClientRect();
-    if (r.width < 240 || r.height < 135 || isAd(r.width, r.height)) continue;
-    const st = getComputedStyle(el);
-    if (st.display === 'none' || st.visibility === 'hidden' || +st.opacity === 0) continue;
+    if (r.width < 240 || r.height < 135 || isAd(r.width, r.height) || !visible(el, r)) continue;
     const tag = el.tagName;
     const src = (el.getAttribute('src') || el.getAttribute('data-src') || '').toLowerCase();
+    if (TRAILER.test(src)) continue;
     let score = tag === 'VIDEO' ? 4 : tag === 'IFRAME' ? 2 : 1;
     if (tag === 'IFRAME' && (el.allowFullscreen || /fullscreen/.test(el.getAttribute('allow') || '') || /embed|player|video|stream|watch|\\/e\\//.test(src))) score += 2;
     if (r.width / r.height > 1.2 && r.width / r.height < 2.4) score += 1;
-    out.push({ el, score, area: r.width * r.height });
+    players.push({ el, score, area: r.width * r.height });
   }
-  out.sort((a, b) => b.score - a.score || b.area - a.area);
-  const pts = [];
-  for (const { el } of out.slice(0, 3)) {
-    if (!pts.length) el.scrollIntoView({ block: 'center', inline: 'center' });
+  players.sort((a, b) => b.score - a.score || b.area - a.area);
+  const HOSTS = /uqload|voe|vidoza|netu|dood|filemoon|streamtape|vidmoly|upstream|mixdrop|streamwish|lulu|vidhide|supervideo|sibnet|ok\\.ru|okru|filelions|vidguard|streamvid|swish|fsvid|vidzy|luluvdo|darkibox/i;
+  const WORDS = /^\\W*(lecteur|serveur|server|player|regarder|voir (le )?(film|l'épisode|episode)|lire|play|watch|vf|vostfr|vo|multi|hd|streaming)\\b/i;
+  const CLS = /(^|[-_\\s])(play|watch|lecteur|server|serveur|player-?(btn|button|item|option)|btn-?play|play-?(btn|button|icon))([-_\\s]|$)/i;
+  const acts = [];
+  const seen = new Set();
+  for (const el of document.querySelectorAll('a,button,li,span,div,[role=button],[onclick],[data-url],[data-embed],[data-link],[data-iframe],[data-video],[data-player],[data-href]')) {
+    if (seen.has(el) || el.closest('header,nav,footer')) continue;
     const r = el.getBoundingClientRect();
-    const x = Math.round(Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 2));
-    const y = Math.round(Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 2));
-    if (!pts.some(([a, b]) => Math.abs(a - x) < 30 && Math.abs(b - y) < 30)) pts.push([x, y]);
+    if (r.width < 16 || r.height < 12 || r.height > 600 || !visible(el, r)) continue;
+    const text = (el.innerText || el.textContent || '').trim().slice(0, 60);
+    const data = ['data-url','data-embed','data-link','data-iframe','data-video','data-player','data-href','data-src'].map(a => el.getAttribute(a)).find(v => v && /(https?:)?\\/\\/|\\/e\\/|embed/.test(v));
+    const cls = (typeof el.className === 'string' ? el.className : '') + ' ' + el.id;
+    let score = 0;
+    if (data && !/^(IMG|IFRAME|SCRIPT|SOURCE)$/.test(el.tagName)) score = 5;
+    else if (text.length <= 40 && (HOSTS.test(text) || WORDS.test(text))) score = 4;
+    else if (CLS.test(cls) && r.width >= 40 && r.height >= 30) score = 3;
+    if (!score || (score < 5 && r.width > 1000)) continue;
+    seen.add(el);
+    // Garder l'élément le plus précis : un parent qui contient déjà une cible est ignoré
+    if (acts.some(a => el.contains(a.el))) continue;
+    acts.push({ el, score, top: r.top });
   }
-  return pts;
-} catch (e) { return []; } })()`;
+  acts.sort((a, b) => b.score - a.score || a.top - b.top);
+  const out = { lazy, player: [], activate: [] };
+  for (const { el } of players.slice(0, 3)) {
+    if (!out.player.length) el.scrollIntoView({ block: 'center', inline: 'center' });
+    const p = point(el.getBoundingClientRect());
+    if (!out.player.some(([a, b]) => Math.abs(a - p[0]) < 30 && Math.abs(b - p[1]) < 30)) out.player.push(p);
+  }
+  for (const { el } of acts.slice(0, 4)) {
+    if (!out.player.length && !out.activate.length) el.scrollIntoView({ block: 'center', inline: 'center' });
+    out.activate.push([...point(el.getBoundingClientRect()), ((el.innerText || el.className || el.tagName) + '').trim().replace(/\\s+/g, ' ').slice(0, 30)]);
+  }
+  return out;
+} catch (e) { return { lazy: 0, player: [], activate: [] }; } })()`;
 
 let counter = 0;
 
@@ -100,6 +136,7 @@ async function resolveStream(pageUrl, opts = {}) {
   let clickTimer = null;
   let clicks = 0;
   let lastClickAt = 0;
+  let activations = 0;
   const userTriggered = () => Date.now() - lastClickAt < 3000;
   let scheduleClick = () => {};
 
@@ -235,23 +272,32 @@ async function resolveStream(pageUrl, opts = {}) {
   // plus haut) : on reclique alors rapidement, jusqu'à 10 fois.
   const click = async () => {
     clickTimer = null;
-    if (wc.isDestroyed() || candidates.size || clicks >= 10) return;
+    if (wc.isDestroyed() || candidates.size || clicks >= 14) return;
     clicks++;
-    let targets = [];
-    try { targets = await wc.executeJavaScript(TARGETS_JS); } catch { /* page en cours de changement */ }
+    let t = null;
+    try { t = await wc.executeJavaScript(TARGETS_JS); } catch { /* page en cours de changement */ }
     if (wc.isDestroyed() || candidates.size) return;
-    // Deux clics par cible (le premier est souvent pris par une pub), puis la suivante,
-    // puis le centre de la fenêtre ; et on recommence.
-    const pts = [...(Array.isArray(targets) ? targets : []), [640, 360]];
-    const [x, y] = pts[Math.floor((clicks - 1) / 2) % pts.length];
+    t = t && typeof t === 'object' ? t : { lazy: 0, player: [], activate: [] };
+    if (t.lazy) onLog(`Iframe différée chargée (${t.lazy})`);
+    // Lecteur présent : deux clics par cible (le premier est souvent pris par une pub), puis la
+    // suivante. Sinon, on clique ce qui le fait apparaître (serveur, affiche « Regarder »).
+    let pts;
+    let what = 'le lecteur';
+    if (t.player.length) pts = [...t.player, [640, 360]];
+    else if (t.activate.length) pts = t.activate;
+    else pts = [[640, 360]];
+    if (!t.player.length) activations++;
+    const idx = t.player.length ? Math.floor((clicks - 1) / 2) % pts.length : Math.floor((activations - 1) / 2) % pts.length;
+    const [x, y, label] = pts[idx];
+    if (label) what = `« ${label} »`;
     lastClickAt = Date.now();
-    onLog(`Clic ${clicks} sur le lecteur (${x}, ${y})`);
+    onLog(`Clic ${clicks} sur ${what} (${x}, ${y})`);
     await trustedClick(wc, x, y);
     try { for (const f of wc.mainFrame.framesInSubtree) f.executeJavaScript(AUTOPLAY_JS).catch(() => {}); } catch { /* ignore */ }
     if (!clickTimer) clickTimer = setTimeout(click, 2500);
   };
   scheduleClick = (delay) => {
-    if (wc.isDestroyed() || candidates.size || clicks >= 10) return;
+    if (wc.isDestroyed() || candidates.size || clicks >= 14) return;
     clearTimeout(clickTimer);
     clickTimer = setTimeout(click, delay);
   };

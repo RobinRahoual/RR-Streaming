@@ -24,6 +24,8 @@ Catalogue TMDB ──► Fiche (film / épisode) ──► Lire
            3. page de l'épisode (séries), puis iframe du lecteur si définie
            4. fenêtre invisible : interception réseau des .m3u8 / .mpd / .mp4
               + headers (Referer, Origin, User-Agent, Cookie), pubs et redirections bloquées
+              + lecteur à faire apparaître : iframe différée chargée, choix du serveur
+                (« Uqload », « VF », « Lecteur 1 ») ou affiche « Regarder » cliqués
               + vrais clics sur le lecteur ; un clic détourné par une pub (pop-up ou
                 redirection de la page ou de l'iframe du lecteur) est neutralisé puis rejoué
            5. lecture HLS (hls.js), DASH (dash.js) ou MP4, headers rejoués sur chaque segment

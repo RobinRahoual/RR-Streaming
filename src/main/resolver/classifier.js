@@ -8,6 +8,8 @@ const DEFAULT_BLOCKED = [
   /(^|\.)facebook\.net$/, /(^|\.)taboola\.com$/, /(^|\.)outbrain\.com$/,
 ];
 const BLOCKED_PATH = /\/(vast|vmap|preroll|ads?)\//i;
+// Régies « popunder » sur domaines jetables : /3/<32 hex> (balises), /4/<32 hex> (pop-up)
+const AD_NETWORK_PATH = /^\/\d\/[0-9a-f]{32}\/?$/i;
 
 const HLS = /\.m3u8(\?|#|&|$)/i;
 const DASH = /\.mpd(\?|#|&|$)/i;
@@ -34,7 +36,9 @@ function createClassifier(opts = {}) {
   const isAllowedHost = (h) => allowed.some((a) => h === a || h.endsWith(`.${a}`));
   const isBlockedUrl = (url) => {
     const h = host(url);
-    return DEFAULT_BLOCKED.some((r) => r.test(h)) || BLOCKED_PATH.test(url);
+    let p = '';
+    try { p = new URL(url).pathname; } catch { /* ignore */ }
+    return DEFAULT_BLOCKED.some((r) => r.test(h)) || BLOCKED_PATH.test(url) || AD_NETWORK_PATH.test(p);
   };
 
   return {
