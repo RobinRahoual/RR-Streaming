@@ -554,3 +554,44 @@ test('correspondance : séries avec saison dans le titre, année de saison, titr
   assert.ok(ok({ type: 'tv', title: "L'Attaque des Titans", originalTitle: '進撃の巨人', altTitles: ['Shingeki no Kyojin', 'Attack on Titan'], year: '2013' }, 'Shingeki no Kyojin (VOSTFR)'));
   assert.deepStrictEqual(scraper.titlesOf({ title: 'A', originalTitle: '進撃の巨人', altTitles: ['B'] }), ['A', 'B']);
 });
+
+test('disponibilité : une source en erreur est signalée et réessayée, pas « introuvable » d\'office', async () => {
+  const p = { id: 'a', name: 'Site A', types: ['movie'], match: { minScore: 0.8, yearTolerance: 1 } };
+  const repo = { activeProviders: () => [p], providersFor: (m) => (m.type === 'movie' ? [p] : []) };
+  const events = [];
+  let titleSearches = 0;
+  const av = new Availability(repo, {
+    emit: (ch, d) => events.push([ch, d]),
+    searchQuery: async () => { throw new Error('HTTP 403 sur site-a.org'); },
+    search: async (_p, media) => { titleSearches++; return { best: media.title === 'Dune' ? { link: 'x', title: 'Dune' } : null }; },
+  });
+  av.check([{ type: 'movie', tmdbId: 1, title: 'Dune', year: '2021' }, { type: 'tv', tmdbId: 2, title: 'Dune: Prophecy' }], 'dune');
+  for (let k = 0; k < 50 && !events.some(([c]) => c === 'availability:done'); k++) await new Promise((r) => setTimeout(r, 5));
+  const res = Object.fromEntries(events.filter(([c]) => c === 'availability:result').map(([, d]) => [d.key, d]));
+  assert.strictEqual(titleSearches, 1, 'seconde passe malgré la page en erreur');
+  assert.strictEqual(res['movie:1'].available, true);
+  assert.strictEqual(res['tv:2'].reason, 'no-source');
+  const done = events.find(([c]) => c === 'availability:done')[1];
+  assert.deepStrictEqual(done.errors, [{ provider: 'Site A', error: 'HTTP 403 sur site-a.org' }]);
+  assert.strictEqual(done.noSource, 1);
+});
+
+test('diagnostic : raisons de rejet par source et par titre', async () => {
+  const films = { id: 'f', name: 'Films', types: ['movie'], search: { url: '{baseUrl}/s?q={query}' }, baseUrl: 'https://f.org', match: { minScore: 0.8, yearTolerance: 1 } };
+  const series = { id: 's', name: 'Séries', types: ['tv'], episodes: {}, search: { url: '{baseUrl}/s?q={query}' }, baseUrl: 'https://s.org', match: { minScore: 0.8, yearTolerance: 1 } };
+  const repo = { activeProviders: () => [films, series], providersFor: (m) => [films, series].filter((p) => p.types.includes(m.type)) };
+  const av = new Availability(repo, {
+    searchQuery: async (p) => (p.id === 'f' ? [{ title: 'Dune (2020)', link: 'f/dune' }, { title: 'Dunkerque', link: 'f/dk', year: '2017' }] : []),
+  });
+  const d = await av.diagnose([
+    { type: 'movie', tmdbId: 1, title: 'Dune', year: '2021' },
+    { type: 'movie', tmdbId: 2, title: 'Dune', year: '1984' },
+    { type: 'movie', tmdbId: 3, title: 'Inception', year: '2010' },
+  ], 'dune');
+  const f = d.sources.find((s) => s.id === 'f');
+  assert.strictEqual(f.url, 'https://f.org/s?q=dune');
+  assert.strictEqual(f.count, 2);
+  assert.deepStrictEqual(f.titles.map((t) => t.status), ['ok', 'year', 'title']);
+  assert.strictEqual(f.titles[1].best.yearDiff, 36);
+  assert.deepStrictEqual(d.sources.find((s) => s.id === 's').titles.map((t) => t.status), ['not-covered', 'not-covered', 'not-covered']);
+});

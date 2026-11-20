@@ -216,6 +216,77 @@ const Views = (() => {
 
   // ---------------------------------------------------------- Recherche
 
+  // ---------------------------------------------------------- Diagnostic des sources
+
+  const pct = (x) => `${Math.round(Math.min(1, x) * 100)} %`;
+  function explainLine(t, source) {
+    const what = `${t.title}${t.year ? ` (${t.year})` : ''} · ${t.type === 'tv' ? 'série' : 'film'}${t.anime ? ' anime' : ''}`;
+    switch (t.status) {
+      case 'ok': return { ok: true, what, why: `trouvé : « ${t.best.title} »${t.best.year && !String(t.best.title).includes(t.best.year) ? ` (${t.best.year})` : ''} · ${pct(t.best.score)}` };
+      case 'year': return { ok: false, what, why: `titre trouvé (« ${t.best.title} », ${pct(t.best.score)}) mais année ${t.best.year} au lieu de ${t.year}` };
+      case 'title': return { ok: false, what, why: `aucun titre proche (le plus proche : « ${t.best.title} », ${pct(t.best.score)})` };
+      case 'empty': return { ok: false, what, why: 'la recherche n\'a renvoyé aucun résultat' };
+      case 'error': return { ok: false, what, why: `erreur de la source : ${source.error}` };
+      case 'not-covered': return { ok: null, what, why: `source non utilisée : elle ne couvre pas les ${t.type === 'tv' ? 'séries' : 'films'}${t.anime ? ' ni les animes' : ''}` };
+      default: return { ok: false, what, why: t.status };
+    }
+  }
+
+  function diagnosticText(d, version) {
+    const lines = [`RR Streaming ${version} — diagnostic de recherche « ${d.query} »`, ''];
+    for (const src of d.sources) {
+      lines.push(`■ ${src.name} (${src.types.map(typeLabel).join(', ')})${src.render ? ' — rendu JavaScript' : ''}`);
+      lines.push(`  URL : ${src.url}`);
+      lines.push(src.error ? `  ERREUR : ${src.error} (${src.ms} ms)` : `  ${src.count} résultat(s) extraits en ${src.ms} ms`);
+      if (src.sample.length) lines.push(`  Exemples : ${src.sample.slice(0, 5).map((r) => `${r.title}${r.year ? ` [${r.year}]` : ''}`).join(' | ')}`);
+      for (const t of src.titles) {
+        const x = explainLine(t, src);
+        lines.push(`  ${x.ok ? '✓' : x.ok === null ? '–' : '✗'} ${x.what} → ${x.why}`);
+      }
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  async function openDiagnostic(items, query) {
+    const body = el('div', { class: 'diag-body' }, el('div', { class: 'loading-line' }, el('span', { class: 'mini-spinner' }), 'Analyse de vos sources…'));
+    const copyBtn = el('button', { class: 'pill small', 'data-focus': true, disabled: true }, 'Copier le rapport');
+    const closeBtn = el('button', { class: 'pill white small', 'data-focus': true }, 'Fermer');
+    const sheet = el('div', { class: 'diag-sheet' },
+      el('div', { class: 'diag-card' },
+        el('div', { class: 'diag-head' }, el('h2', {}, `Diagnostic · « ${query} »`), el('span', { class: 'grow' }), copyBtn, closeBtn),
+        el('p', { class: 'diag-sub' }, 'Ce que chaque source renvoie pour cette recherche, et pourquoi un titre est retenu ou non.'),
+        body));
+    const close = () => { sheet.remove(); document.removeEventListener('keydown', onKey, true); UI.focusFirst('.avail-line [data-focus]'); };
+    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); e.stopPropagation(); close(); } };
+    closeBtn.onclick = close;
+    document.addEventListener('keydown', onKey, true);
+    document.body.append(sheet);
+    UI.setFocus(closeBtn, { scroll: false });
+    try {
+      const [d, version] = await Promise.all([call(window.rr.sources.diagnose(items, query)), call(window.rr.version())]);
+      if (!d.sources.length) { body.replaceChildren(el('p', {}, 'Aucune source active.')); return; }
+      body.replaceChildren(...d.sources.map((src) => el('section', { class: 'diag-source' },
+        el('div', { class: 'diag-src-head' },
+          el('strong', {}, src.name), el('span', { class: 'muted' }, ` · ${src.types.map(typeLabel).join(', ')}${src.render ? ' · JavaScript' : ''}`),
+          el('span', { class: 'grow' }),
+          src.error ? el('span', { class: 'bad' }, `Erreur · ${src.ms} ms`) : el('span', { class: src.count ? 'good' : 'bad' }, `${src.count} résultat${src.count > 1 ? 's' : ''} · ${src.ms} ms`)),
+        el('div', { class: 'diag-url' }, src.url),
+        src.error ? el('div', { class: 'diag-err' }, src.error) : null,
+        !src.error && src.count === 0 ? el('div', { class: 'diag-err' }, 'La page de recherche ne contient aucun résultat reconnu : le site a peut-être changé, ou il construit ses résultats en JavaScript (rouvrez la source avec « Modifier » pour relancer l\'analyse).') : null,
+        src.sample.length ? el('div', { class: 'diag-sample' }, 'Trouvé sur la page : ', src.sample.slice(0, 6).map((r) => `${r.title}${r.year ? ` (${r.year})` : ''}`).join(' · ')) : null,
+        el('ul', { class: 'diag-titles' }, src.titles.map((t) => {
+          const x = explainLine(t, src);
+          return el('li', { class: x.ok ? 'ok' : x.ok === null ? 'skip' : 'ko' }, el('span', { class: 'mark' }, x.ok ? '✓' : x.ok === null ? '–' : '✗'), el('span', { class: 'what' }, x.what), el('span', { class: 'why' }, x.why));
+        })))));
+      const text = diagnosticText(d, version);
+      copyBtn.disabled = false;
+      copyBtn.onclick = async () => { await window.rr.copy(text); toast('Rapport copié : collez-le dans la conversation'); };
+    } catch (err) {
+      body.replaceChildren(el('p', { class: 'diag-err' }, err.message));
+    }
+  }
+
   let lastQuery = '';
   function search(view) {
     const input = el('input', { class: 'input', type: 'search', placeholder: 'Films, séries…', value: lastQuery, 'data-focus': true, spellcheck: 'false' });
@@ -239,19 +310,26 @@ const Views = (() => {
       art.querySelectorAll('.avail-badge').forEach((b) => b.remove());
       art.append(el('div', { class: 'avail-badge' }, text));
     };
+    let lastItems = [];
+    const diagBtn = () => el('button', { class: 'icon-btn', 'data-focus': true, onclick: () => openDiagnostic(lastItems, lastQuery) }, 'Diagnostic');
     const offDone = window.rr.sources.onAvailabilityDone((d) => {
       if (d.query !== lastQuery) return;
       const n = d.available != null ? d.available : [...cardsByKey.values()].filter((c) => c.classList.contains('available')).length;
       availLine.className = 'avail-line done';
-      availLine.replaceChildren(el('span', { class: 'dot' }), `${n} titre${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''} sur vos sources`,
-        d.ms ? el('span', { class: 'muted' }, ` · ${(d.ms / 1000).toFixed(1).replace('.', ',')} s`) : null);
+      const parts = [el('span', { class: 'dot' }), `${n} titre${n > 1 ? 's' : ''} disponible${n > 1 ? 's' : ''} sur vos sources`,
+        d.ms ? el('span', { class: 'muted' }, ` · ${(d.ms / 1000).toFixed(1).replace('.', ',')} s`) : null];
+      const warn = [];
+      for (const e of d.errors || []) warn.push(`${e.provider} : ${e.error}`);
+      if (d.noSource) warn.push(`${d.noSource} titre${d.noSource > 1 ? 's' : ''} sans source adaptée (vérifiez les cases Films / Séries / Animes de vos sources)`);
+      availLine.replaceChildren(el('div', { class: 'avail-main' }, ...parts, el('span', { class: 'grow' }), diagBtn()),
+        warn.length ? el('div', { class: 'avail-warn' }, warn.map((w) => el('div', {}, '⚠︎ ', w))) : null);
     });
     const offAvail = window.rr.sources.onAvailability((r) => {
       const card = cardsByKey.get(r.key);
       if (!card) return;
       card.classList.remove('checking');
       card.classList.add(r.available ? 'available' : 'unavailable');
-      if (!card.classList.contains('ready')) setBadge(card, r.available ? 'Disponible' : 'Introuvable');
+      if (!card.classList.contains('ready')) setBadge(card, r.available ? 'Disponible' : r.reason === 'no-source' ? 'Pas de source' : 'Introuvable');
       if (r.available) card.title = `Disponible sur ${r.provider}`;
     });
     // Flux préparé (survol / focus d'un résultat disponible) : badge « Prêt à lire ».
@@ -297,7 +375,8 @@ const Views = (() => {
         if (items.length) {
           availLine.className = 'avail-line';
           availLine.replaceChildren(el('span', { class: 'mini-spinner' }), 'Vérification sur vos sources…');
-          call(window.rr.sources.availability(items.slice(0, 20).map(itemMedia), q)).then((n) => {
+          lastItems = items.slice(0, 20).map(itemMedia);
+          call(window.rr.sources.availability(lastItems, q)).then((n) => {
             if (!n) {
               cards.forEach((c) => c.classList.remove('checking'));
               availLine.className = 'avail-line done';

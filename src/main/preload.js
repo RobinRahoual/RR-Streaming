@@ -9,6 +9,7 @@ const on = (channel) => (fn) => {
 
 contextBridge.exposeInMainWorld('rr', {
   version: () => ipcRenderer.invoke('app:version'),
+  copy: (text) => ipcRenderer.invoke('app:copy', text),
 
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -30,6 +31,7 @@ contextBridge.exposeInMainWorld('rr', {
     availability: (list, query) => ipcRenderer.invoke('sources:availability', list, query),
     onAvailabilityDone: on('availability:done'),
     cancelAvailability: () => ipcRenderer.invoke('sources:availabilityCancel'),
+    diagnose: (list, query) => ipcRenderer.invoke('sources:diagnose', list, query),
     onAvailability: on('availability:result'),
   },
 

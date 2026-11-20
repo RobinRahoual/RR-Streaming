@@ -154,10 +154,14 @@ class AvailabilityChecker(
     private val secondPass: Int = 6,
     private val fullPage: Int = 15,
 ) {
-    data class Result(val available: Boolean, val provider: String?)
+    /** reason : "no-source" quand aucune source active ne couvre ce type de contenu. */
+    data class Result(val available: Boolean, val provider: String?, val reason: String? = null)
 
     private val cache = ConcurrentHashMap<String, Pair<Long, Result>>()
     private var job: Job? = null
+
+    /** Sources en erreur lors de la dernière vérification (nom → message). */
+    val errors = MutableStateFlow<Map<String, String>>(emptyMap())
 
     /** Résultats par clé "type:tmdbId", mis à jour au fil des réponses. */
     val results = MutableStateFlow<Map<String, Result>>(emptyMap())
@@ -198,13 +202,27 @@ class AvailabilityChecker(
         val providers = items.flatMap { store.providersFor(it) }.distinctBy { it.id }
         val gate = Semaphore(concurrency)
 
-        // 1. Une recherche par source avec le texte tapé.
+        // 1. Une recherche par source avec le texte tapé. Une source en erreur n'est pas une page vide :
+        //    elle est signalée et la seconde passe la réessaie.
+        errors.value = emptyMap()
         val pages: Map<String, List<SearchResult>> = if (query.isEmpty()) emptyMap() else providers.map { p ->
-            async { p.id to (gate.withPermit { runCatching { scraper.searchQuery(p, query) }.getOrDefault(emptyList()) }) }
-        }.awaitAll().toMap()
+            async {
+                gate.withPermit {
+                    try {
+                        p.id to scraper.searchQuery(p, query)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        errors.update { it + (p.name to (e.message ?: e.javaClass.simpleName)) }
+                        null
+                    }
+                }
+            }
+        }.awaitAll().filterNotNull().toMap()
 
         val missing = mutableListOf<MediaRequest>()
         for (media in items) {
+            if (store.providersFor(media).isEmpty()) { report(media, Result(false, null, "no-source")); continue }
             val found = store.providersFor(media).firstNotNullOfOrNull { p ->
                 pages[p.id]?.let { TitleMatcher.pickBest(it, media, p.match) }?.let { p to it }
             }
@@ -233,7 +251,10 @@ class AvailabilityChecker(
                             scraper.search(p, media, maxQueries = 2, skipQueries = listOfNotNull(query.ifEmpty { null })).best
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (_: Throwable) { null }
+                        } catch (e: Throwable) {
+                            errors.update { it + (p.name to (e.message ?: e.javaClass.simpleName)) }
+                            null
+                        }
                         if (best != null) {
                             matches?.remember(media, p.id, best.result.link, best.result.title)
                             report(media, Result(true, p.name))

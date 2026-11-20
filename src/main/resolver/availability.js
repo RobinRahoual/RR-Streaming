@@ -68,6 +68,39 @@ class Availability {
 
   cancel() { this.generation++; }
 
+  /**
+   * Diagnostic détaillé : pour chaque source active, la page de recherche obtenue avec `query`
+   * et, pour chaque média, la raison d'un rejet. Sert à comprendre « Introuvable » sur un vrai site.
+   */
+  async diagnose(list, query) {
+    const items = await mapLimit(list.slice(0, 10), 4, (m) => this.enrich(m).catch(() => m));
+    const providers = this.repo.activeProviders();
+    const sources = await mapLimit(providers, this.concurrency, async (p) => {
+      const t0 = Date.now();
+      const url = scraper.fill(p.search.url, { baseUrl: p.baseUrl.replace(/\/$/, ''), query: encodeURIComponent(query) });
+      const out = { id: p.id, name: p.name, types: p.types, render: !!p.render, url, ms: 0, error: null, count: 0, sample: [], titles: [] };
+      let results = [];
+      try {
+        results = await this.searchQuery(p, query);
+      } catch (err) {
+        out.error = err.message;
+      }
+      out.ms = Date.now() - t0;
+      out.count = results.length;
+      out.sample = results.slice(0, 8).map((r) => ({ title: r.title, year: r.year, link: r.link }));
+      for (const media of items) {
+        const covers = this.repo.providersFor(media).some((x) => x.id === p.id);
+        const entry = { key: keyOf(media), title: media.title, year: media.year || null, type: media.type, anime: !!media.anime, altTitles: media.altTitles || [] };
+        if (!covers) entry.status = 'not-covered';
+        else if (out.error) entry.status = 'error';
+        else Object.assign(entry, scraper.explainMatch(results, media, p.match || { minScore: 0.8, yearTolerance: 1 }));
+        out.titles.push(entry);
+      }
+      return out;
+    });
+    return { query, at: Date.now(), sources };
+  }
+
   clear() {
     this.cache.clear();
     this.generation++;
@@ -92,10 +125,12 @@ class Availability {
     const providers = [];
     for (const m of items) for (const p of this.repo.providersFor(m)) if (!providerIds.has(p.id)) { providerIds.add(p.id); providers.push(p); }
     const pages = new Map();
+    const errors = [];
     if (query) {
       await mapLimit(providers, this.concurrency, async (p) => {
         if (!alive()) return;
-        try { pages.set(p.id, await this.searchQuery(p, query)); } catch { pages.set(p.id, []); }
+        // Une source en erreur n'est PAS une page vide : on la signale et la seconde passe la réessaie.
+        try { pages.set(p.id, await this.searchQuery(p, query)); } catch (err) { errors.push({ provider: p.name, error: err.message }); }
       });
     }
     if (!alive()) return;
@@ -103,6 +138,11 @@ class Availability {
     const medias = await enriched;
     const missing = [];
     for (const media of medias) {
+      if (!this.repo.providersFor(media).length) {
+        // Aucune source ne couvre ce type (ex. source « Séries » seule pour un film).
+        report(media, { available: false, provider: null, reason: 'no-source' });
+        continue;
+      }
       let found = null;
       for (const p of this.repo.providersFor(media)) {
         const best = pages.has(p.id) ? this.pickBest(pages.get(p.id), media, p.match || { minScore: 0.8, yearTolerance: 1 }) : null;
@@ -140,14 +180,17 @@ class Availability {
             report(media, { available: true, provider: p.name });
             return;
           }
-        } catch { /* source injoignable : suivante */ }
+        } catch (err) {
+          if (!errors.some((e) => e.provider === p.name)) errors.push({ provider: p.name, error: err.message });
+        }
       }
       report(media, { available: false, provider: null });
     });
 
     if (alive()) {
       const available = [...done].filter((k) => this.cache.get(k)?.value.available).length;
-      this.emit('availability:done', { query, total: items.length, available, ms: Date.now() - t0 });
+      const noSource = [...done].filter((k) => this.cache.get(k)?.value.reason === 'no-source').length;
+      this.emit('availability:done', { query, total: items.length, available, noSource, errors, ms: Date.now() - t0 });
     }
   }
 }

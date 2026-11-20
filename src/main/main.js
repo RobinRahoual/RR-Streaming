@@ -1,6 +1,6 @@
 'use strict';
 const path = require('path');
-const { app, BrowserWindow, ipcMain, session, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell, Menu, clipboard } = require('electron');
 const { Settings } = require('./settings');
 const { Tmdb } = require('./tmdb');
 const { SourceRepository } = require('./sources/repository');
@@ -96,6 +96,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     handle('app:version', () => app.getVersion());
+    handle('app:copy', (text) => { clipboard.writeText(String(text || '')); return true; });
     handle('settings:get', () => settings.get());
     handle('settings:set', (patch) => { tmdb.clear(); return settings.set(patch); });
     handle('tmdb:get', (p, params) => tmdb.get(p, params));
@@ -119,6 +120,7 @@ if (!app.requestSingleInstanceLock()) {
     handle('stream:status', (media) => streams.status(media));
     handle('sources:availability', (list, query) => availability.check(Array.isArray(list) ? list.slice(0, 30) : [], query));
     handle('sources:availabilityCancel', () => availability.cancel());
+    handle('sources:diagnose', (list, query) => availability.diagnose(Array.isArray(list) ? list : [], String(query || '')));
 
     handle('player:resolve', async (media, opts) => {
       const result = await streams.resolve(media, opts || {});

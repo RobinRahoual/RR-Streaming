@@ -129,6 +129,27 @@ function pickBest(results, media, match) {
   return best;
 }
 
+/**
+ * Diagnostic : pourquoi un média correspond (ou non) aux résultats d'une source.
+ * Renvoie { status: 'ok'|'year'|'title'|'empty', best: { title, year, link, score, yearDiff } }.
+ */
+function explainMatch(results, media, match) {
+  if (!results.length) return { status: 'empty', best: null };
+  const ok = pickBest(results, media, match);
+  if (ok) return { status: 'ok', best: { title: ok.title, year: ok.year || cleanResultTitle(ok.title).year, link: ok.link, score: ok.score } };
+  const titles = titlesOf(media);
+  if (!titles.length) titles.push(media.title);
+  let top = null;
+  for (const r of results) {
+    const score = Math.max(...titles.map((t) => similarity(t, r.title)));
+    if (!top || score > top.score) top = { ...r, score };
+  }
+  const ry = top.year || cleanResultTitle(top.title).year;
+  const yearDiff = media.year && ry ? Math.abs(Number(media.year) - Number(ry)) : null;
+  const status = top.score >= match.minScore ? 'year' : 'title';
+  return { status, best: { title: top.title, year: ry || null, link: top.link, score: top.score, yearDiff } };
+}
+
 // ------------------------------------------------------------ Réseau
 
 async function fetchHtml(url, headers = {}, timeoutMs = 15000) {
@@ -276,6 +297,6 @@ async function playerPage(provider, pageUrl) {
 }
 
 module.exports = {
-  extract, normalizeTitle, similarity, cleanResultTitle, pickBest, titlesOf, fill, search, searchQuery, episodeUrl, playerPage,
+  extract, normalizeTitle, similarity, cleanResultTitle, pickBest, explainMatch, titlesOf, fill, search, searchQuery, episodeUrl, playerPage,
   fetchHtml, fetchPage, clearPageCache, setPageRenderer, canRender, DEFAULT_UA,
 };
