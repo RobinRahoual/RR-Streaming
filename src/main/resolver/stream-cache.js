@@ -19,6 +19,8 @@ function publicStatus(e) {
     provider: e.result ? e.result.provider.name : null,
     error: e.error ? e.error.message : null,
     code: e.error ? e.error.code || null : null,
+    failures: e.error && Array.isArray(e.error.failures) ? e.error.failures : null,
+    title: e.media ? e.media.title : null,
   };
 }
 

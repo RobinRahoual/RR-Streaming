@@ -109,6 +109,47 @@ const Views = (() => {
       label ? el('span', {}, label) : null);
   }
 
+  /** Rapport d'échec de la recherche de flux d'une fiche : étape atteinte et journal par source. */
+  function resolveReportText(st) {
+    const lines = [`RR Streaming — échec de lecture · ${st.title || st.key}`, `Clé : ${st.key}`, ''];
+    for (const f of st.failures || []) {
+      lines.push(`## ${f.provider} (${(f.ms / 1000).toFixed(1)} s)`);
+      lines.push(`Titre retenu : ${f.matched ? `« ${f.matched} »` : '—'}`);
+      if (f.link) lines.push(`Page du titre : ${f.link}`);
+      if (f.pageUrl && f.pageUrl !== f.link) lines.push(`Page de l'épisode : ${f.pageUrl}`);
+      if (f.playerUrl) lines.push(`Lecteur : ${f.playerUrl}`);
+      lines.push(`Erreur : ${f.error}`);
+      for (const l of f.log || []) lines.push(`  ${l}`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  function openResolveReport(st) {
+    const copyBtn = el('button', { class: 'pill small', 'data-focus': true }, 'Copier le rapport');
+    const closeBtn = el('button', { class: 'pill white small', 'data-focus': true }, 'Fermer');
+    const stepLabel = { search: 'Recherche du titre', page: 'Page du titre / épisode', player: 'Interception du flux' };
+    const body = el('div', { class: 'diag-body' }, (st.failures || []).map((f) => el('section', { class: 'diag-source' },
+      el('div', { class: 'diag-src-head' }, f.provider, el('span', { class: 'muted' }, ` · bloqué à : ${stepLabel[f.step] || f.step}`)),
+      el('div', { class: 'diag-sample' }, 'Titre retenu : ', f.matched ? `« ${f.matched} »` : '—'),
+      f.link ? el('div', { class: 'diag-url' }, f.link) : null,
+      f.playerUrl && f.playerUrl !== f.link ? el('div', { class: 'diag-url' }, 'Lecteur : ', f.playerUrl) : null,
+      el('div', { class: 'diag-err' }, f.error),
+      f.log && f.log.length ? el('pre', { class: 'diag-log' }, f.log.join('\n')) : null)));
+    const sheet = el('div', { class: 'diag-sheet' },
+      el('div', { class: 'diag-card' },
+        el('div', { class: 'diag-head' }, el('h2', {}, `Lecture · ${st.title || ''}`), el('span', { class: 'grow' }), copyBtn, closeBtn),
+        el('p', { class: 'diag-sub' }, 'Ce qui s\'est passé sur chaque source pour ce titre.'),
+        body));
+    const close = () => { sheet.remove(); document.removeEventListener('keydown', onKey, true); UI.focusFirst('.stream-status [data-focus]'); };
+    const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); e.stopPropagation(); close(); } };
+    closeBtn.onclick = close;
+    copyBtn.onclick = () => { window.rr.copy(resolveReportText(st)); copyBtn.textContent = 'Copié ✓'; };
+    document.addEventListener('keydown', onKey, true);
+    document.body.append(sheet);
+    UI.focusFirst('.diag-sheet [data-focus]');
+  }
+
   /**
    * Lance la recherche du flux dès l'ouverture de la fiche et affiche son état sous « Lire ».
    * « Lire » réutilise ensuite ce résultat (ou attend la recherche en cours).
@@ -121,7 +162,12 @@ const Views = (() => {
       if (st.status === 'resolving') node.replaceChildren(el('span', { class: 'mini-spinner' }), 'Recherche d\'une source…');
       else if (st.status === 'ready') node.replaceChildren(el('span', { class: 'dot' }), 'Prêt à lire', el('span', { class: 'via' }, st.provider));
       else if (st.status === 'failed') {
-        node.replaceChildren(el('span', { class: 'dot' }), st.code === 'NO_SOURCES' ? 'Aucune source active' : 'Aucune source n\'a trouvé ce titre');
+        const fails = st.failures || [];
+        const matched = fails.some((f) => f.matched);
+        const text = st.code === 'NO_SOURCES' ? 'Aucune source active'
+          : matched ? 'Titre trouvé, mais aucun flux lisible' : 'Aucune source n\'a trouvé ce titre';
+        node.replaceChildren(el('span', { class: 'dot' }), text,
+          fails.length ? el('button', { class: 'link-btn', 'data-focus': true, onclick: () => openResolveReport(st) }, 'Détails') : null);
       } else node.replaceChildren();
     };
     const off = window.rr.stream.onStatus((st) => { if (st.key === key) render(st); });
@@ -468,7 +514,7 @@ const Views = (() => {
       for (const e of d.errors || []) warn.push(`${e.provider} : ${e.error}`);
       if (d.noSource) warn.push(`${d.noSource} titre${d.noSource > 1 ? 's' : ''} sans source adaptée (vérifiez les cases Films / Séries / Animes de vos sources)`);
       availLine.replaceChildren(el('div', { class: 'avail-main' }, ...parts, el('span', { class: 'grow' }), diagBtn()),
-        warn.length ? el('div', { class: 'avail-warn' }, warn.map((w) => el('div', {}, '⚠︎ ', w))) : null);
+        ...(warn.length ? [el('div', { class: 'avail-warn' }, warn.map((w) => el('div', {}, '⚠︎ ', w)))] : []));
     });
     const offAvail = window.rr.sources.onAvailability((r) => {
       const card = cardsByKey.get(r.key);

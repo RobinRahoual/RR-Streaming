@@ -108,7 +108,33 @@ async function resolveStream(pageUrl, opts = {}) {
     } catch { /* frame détruite */ }
     autoplayTimer = setTimeout(() => autoplay(n + 1), 1200);
   };
-  wc.on('did-finish-load', () => autoplay());
+  wc.on('did-finish-load', () => { onLog(`Page chargée : ${safeHost(wc.getURL())}`); autoplay(); });
+  // Iframes chargées (hébergeur du lecteur) : utile au diagnostic.
+  const seenFrames = new Set();
+  wc.on('did-frame-navigate', (_e, url, code, _status, isMainFrame) => {
+    const h = safeHost(url);
+    if (isMainFrame || !h || seenFrames.has(h) || seenFrames.size > 8) return;
+    seenFrames.add(h);
+    onLog(`Iframe : ${h}${code >= 400 ? ` (HTTP ${code})` : ''}`);
+  });
+  // Vrais clics souris au centre (geste « utilisateur ») : beaucoup de lecteurs ne démarrent qu'ainsi,
+  // et le premier clic ferme souvent une surcouche publicitaire.
+  let clickTimer = null;
+  let clicks = 0;
+  const click = () => {
+    if (wc.isDestroyed() || candidates.size || clicks >= 8) return;
+    clicks++;
+    try {
+      const [x, y] = [640, 360];
+      wc.sendInputEvent({ type: 'mouseMove', x, y });
+      wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+      wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+      if (clicks === 1) onLog('Clic sur le lecteur');
+    } catch { /* fenêtre fermée */ }
+    try { for (const f of wc.mainFrame.framesInSubtree) f.executeJavaScript(AUTOPLAY_JS).catch(() => {}); } catch { /* ignore */ }
+    clickTimer = setTimeout(click, 2500);
+  };
+  wc.once('did-finish-load', () => { clickTimer = setTimeout(click, 2000); });
   const onAbort = () => failReject(new Error('Annulé'));
   if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
@@ -125,6 +151,7 @@ async function resolveStream(pageUrl, opts = {}) {
   } finally {
     if (signal) signal.removeEventListener('abort', onAbort);
     clearTimeout(autoplayTimer);
+    clearTimeout(clickTimer);
     ses.webRequest.onBeforeRequest(null);
     ses.webRequest.onBeforeSendHeaders(null);
     if (!win.isDestroyed()) win.destroy();
